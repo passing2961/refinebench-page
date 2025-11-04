@@ -823,7 +823,7 @@
       </div>
     </div>
   </section>
-<!-- ========================================= -->
+  <!-- ========================================= -->
 <!-- 🔮 Visualization (RefineBench Data Viewer) -->
 <!-- ========================================= -->
 <section class="section" id="visualization" style="background: linear-gradient(180deg, #fffaf6 0%, #fff5ed 100%); padding-top: 5rem; padding-bottom: 5rem;">
@@ -853,13 +853,11 @@
 
           <!-- ✅ Loading Placeholder -->
           <div id="viz-loading" style="padding: 40px; text-align: center; color: #666;">
-            <p><i class="fas fa-spinner fa-spin"></i> Select a field and index to view the data.</p>
+            <p><i class="fas fa-spinner fa-spin"></i> Loading dataset...</p>
           </div>
 
           <!-- ✅ Visualization Content -->
           <div id="viz-content" style="display:none;">
-
-            <!-- Metadata Section -->
             <div class="box" style="background:#fffdf9; border:1.5px solid #ED8537; border-radius:12px; margin-bottom:1rem;">
               <h4 class="title is-5" style="color:#ED8537;">Metadata</h4>
               <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;">
@@ -871,38 +869,32 @@
               </div>
             </div>
 
-            <!-- Question -->
             <div style="margin-bottom: 1.5rem;">
               <h4 class="title is-5" style="color:#ED8537;">🧩 Question</h4>
               <div class="box" style="background:#ffffff;"><div id="question"></div></div>
             </div>
 
-            <!-- Reference Answer -->
             <div style="margin-bottom: 1.5rem;">
               <h4 class="title is-5" style="color:#ED8537;">✅ Reference Answer</h4>
               <div class="box" style="background:#ffffff;"><div id="reference_answer"></div></div>
             </div>
 
-            <!-- Materials -->
             <div style="margin-bottom: 1.5rem;">
               <h4 class="title is-5" style="color:#ED8537;">📚 Materials</h4>
               <div class="box" style="background:#ffffff;"><div id="materials"></div></div>
             </div>
 
-            <!-- Comments -->
             <div style="margin-bottom: 1.5rem;">
               <h4 class="title is-5" style="color:#ED8537;">💬 Comments</h4>
               <div class="box" style="background:#ffffff;"><div id="comment"></div></div>
             </div>
 
-            <!-- Checklist -->
             <div style="margin-bottom: 1.5rem;">
               <h4 class="title is-5" style="color:#ED8537;">🧾 Checklist</h4>
               <div class="box" id="checklist-box" style="background:#fff; border:1px solid #ED8537;">
                 <ul id="checklist" style="list-style:none; margin:0; padding:0;"></ul>
               </div>
             </div>
-
           </div>
         </div>
       </div>
@@ -975,124 +967,84 @@
   <button onclick="topFunction()" id="topButton" title="Go to top">
     <i class="fas fa-arrow-up"></i>
   </button>
-
-  <script>
-    const API_BASE = "http://143.248.135.116:8080";  // Flask 서버 IP + 포트
-    
-    // ============================================================
-    // ✅ Field 목록 불러오기
-    // ============================================================
-    async function initVisualization() {
-      try {
-        const res = await fetch(`${API_BASE}/fields`);
-        if (!res.ok) throw new Error("Failed to fetch fields");
-        const fields = await res.json();
-    
-        const fieldSelect = document.getElementById("field-select");
-        fieldSelect.innerHTML = "<option value='' disabled selected>Select Field</option>";
-    
-        fields.sort().forEach(f => {
-          const opt = document.createElement("option");
-          opt.value = f;
-          opt.textContent = f;
-          fieldSelect.appendChild(opt);
-        });
-    
-        console.log(`✅ Loaded ${fields.length} fields`);
-      } catch (err) {
-        console.error("❌ Error loading fields:", err);
-        document.getElementById("viz-loading").innerHTML = `<p style="color:red;">Failed to load fields from Flask server.</p>`;
-      }
-    }
-    
-    // ============================================================
-    // ✅ Field → Index 목록 불러오기
-    // ============================================================
-    document.getElementById("field-select").addEventListener("change", async (e) => {
-    const rawField = e.target.value;
-    // "/" → "_" 변환 (URL 안전화)
-    const safeField = rawField.replace(/\//g, "_");
-
-    const indexSelect = document.getElementById("index-select");
-    indexSelect.innerHTML = "<option value='' disabled selected>Loading...</option>";
-    indexSelect.disabled = true;
-
+<!-- ===================================== -->
+<!-- ✅ JS: Load Local JSON Instead of API -->
+<!-- ===================================== -->
+<script>
+  async function initVisualization() {
     try {
-      const res = await fetch(`${API_BASE}/indices/${encodeURIComponent(safeField)}`);
-      if (!res.ok) throw new Error(`Failed to fetch indices for field: ${rawField}`);
-      const ids = await res.json();
-
-      if (!ids || ids.length === 0) {
-        console.warn(`⚠️ No indices found for field "${rawField}"`);
-        indexSelect.innerHTML = "<option value='' disabled selected>No problems available</option>";
-        return;
-      }
-
-      indexSelect.innerHTML = "<option value='' disabled selected>Select Index</option>";
-      ids.forEach(id => {
-        const opt = document.createElement("option");
-        opt.value = id;
-        opt.textContent = id;
-        indexSelect.appendChild(opt);
-      });
-
-      indexSelect.disabled = false;
-      console.log(`✅ Loaded ${ids.length} indices for field "${rawField}"`);
-    } catch (err) {
-      console.error("❌ Error loading indices:", err);
-      indexSelect.innerHTML = "<option value='' disabled selected>Error loading indices</option>";
-    }
-  });
+      const res = await fetch("./static/data/refinebench_samples.json");  // 👈 정적 JSON 파일 로드
+      const allData = await res.json();
+      const fields = Object.keys(allData).sort();
   
-  document.getElementById("index-select").addEventListener("change", async (e) => {
-  const id = e.target.value;
-  try {
-    const res = await fetch(`${API_BASE}/problem/${id}`);
-    if (!res.ok) throw new Error(`Failed to fetch problem #${id}`);
-    const data = await res.json();
-
-    document.getElementById("viz-loading").style.display = "none";
-    document.getElementById("viz-content").style.display = "block";
-
-    // ✅ 내용 표시 (innerHTML → LaTeX 허용)
-    document.getElementById("question").innerHTML = data.question || "";
-    document.getElementById("reference_answer").innerHTML = (data.reference_answer || []).join("<br>");
-    document.getElementById("materials").innerHTML = (data.materials || []).join("<br>");
-    document.getElementById("comment").innerHTML = (data.comment || []).join("<br>");
-
-    // ✅ Checklist 시각화 (✔️/❌ 표시)
-    const checklistContainer = document.getElementById("checklist");
-    checklistContainer.innerHTML = "";
-    (data.checklist || []).forEach((item) => {
-      const li = document.createElement("li");
-      li.style.cssText = "padding:8px 12px; border-bottom:1px solid #eee; display:flex; align-items:center; gap:10px;";
-      li.innerHTML = `<span style="color:#ED8537;">✔️</span> <span>${item}</span>`;
-      checklistContainer.appendChild(li);
-    });
-
-    // ✅ Metadata 업데이트
-    document.getElementById("meta-field").innerText = `Field: ${data.field || "—"}`;
-    document.getElementById("meta-subject").innerText = `Subject: ${data.subject || "—"}`;
-    document.getElementById("meta-institution").innerText = `Institution: ${data.institution || "—"}`;
-    document.getElementById("meta-year").innerText = `Year: ${data.year || "—"}/${data.month || "—"}`;
-    document.getElementById("meta-exam").innerText = `Exam: ${data.exam_type || "—"}`;
-
-    // ✅ MathJax 렌더링
-    if (window.MathJax) {
-      MathJax.typesetPromise().then(() => console.log("✅ MathJax rendered"));
+      const fieldSelect = document.getElementById("field-select");
+      const indexSelect = document.getElementById("index-select");
+  
+      fieldSelect.innerHTML = "<option value='' disabled selected>Select Field</option>";
+      fields.forEach(field => {
+        const opt = document.createElement("option");
+        opt.value = field;
+        opt.textContent = field;
+        fieldSelect.appendChild(opt);
+      });
+  
+      document.getElementById("viz-loading").innerHTML = `<p style="color:green;">✅ Dataset loaded successfully.</p>`;
+  
+      // ✅ 필드 선택 시 index 목록 표시
+      fieldSelect.addEventListener("change", () => {
+        const field = fieldSelect.value;
+        indexSelect.innerHTML = "<option value='' disabled selected>Select Index</option>";
+        (allData[field] || []).forEach((item, idx) => {
+          const opt = document.createElement("option");
+          opt.value = `${field}__${idx}`;
+          opt.textContent = `#${item.index || idx}`;
+          indexSelect.appendChild(opt);
+        });
+        indexSelect.disabled = false;
+      });
+  
+      // ✅ 인덱스 선택 시 문제 표시
+      indexSelect.addEventListener("change", () => {
+        const [field, idxStr] = indexSelect.value.split("__");
+        const idx = parseInt(idxStr);
+        const item = allData[field][idx];
+  
+        document.getElementById("viz-loading").style.display = "none";
+        document.getElementById("viz-content").style.display = "block";
+  
+        document.getElementById("meta-field").innerText = `Field: ${item.field || "—"}`;
+        document.getElementById("meta-subject").innerText = `Subject: ${item.subject || "—"}`;
+        document.getElementById("meta-institution").innerText = `Institution: ${item.institution || "—"}`;
+        document.getElementById("meta-year").innerText = `Year: ${item.year || "—"}/${item.month || "—"}`;
+        document.getElementById("meta-exam").innerText = `Exam: ${item.exam_type || "—"}`;
+  
+        document.getElementById("question").innerHTML = item.question || "";
+        document.getElementById("reference_answer").innerHTML = (item.reference_answer || []).join("<br>");
+        document.getElementById("materials").innerHTML = (item.materials || []).join("<br>");
+        document.getElementById("comment").innerHTML = (item.comment || []).join("<br>");
+  
+        const checklistContainer = document.getElementById("checklist");
+        checklistContainer.innerHTML = "";
+        (item.checklist || []).forEach((check) => {
+          const li = document.createElement("li");
+          li.style.cssText = "padding:8px 12px; border-bottom:1px solid #eee; display:flex; align-items:center; gap:10px;";
+          li.innerHTML = `<span style="color:#ED8537;">✔️</span> <span>${check}</span>`;
+          checklistContainer.appendChild(li);
+        });
+  
+        if (window.MathJax) MathJax.typesetPromise();
+        console.log(`✅ Loaded item from field=${field}, index=${idx}`);
+      });
+  
+    } catch (err) {
+      console.error("❌ Error loading dataset:", err);
+      document.getElementById("viz-loading").innerHTML = `<p style="color:red;">Failed to load dataset.</p>`;
     }
-
-    console.log(`✅ Loaded problem ${id}`);
-  } catch (err) {
-    console.error("❌ Error loading problem:", err);
-    document.getElementById("viz-loading").innerHTML = `<p style="color:red;">Failed to load problem data.</p>`;
   }
-});
-    // ============================================================
-    // ✅ 초기화 실행
-    // ============================================================
-    initVisualization();
-    </script>
+  
+  // 초기화
+  initVisualization();
+  </script>
     
 
 </html>
