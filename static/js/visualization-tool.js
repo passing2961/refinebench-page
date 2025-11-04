@@ -26,7 +26,14 @@
   function initVisualizationTool() {
     console.log('Initializing RefineBench visualization tool...');
     
-    const DATA_FILE = './visualization_tool/data/refinebench_samples.json';
+    // Try multiple possible paths for the data file
+    const DATA_PATHS = [
+      './visualization_tool/data/refinebench_samples.json',
+      './static/data/refinebench_samples.json',
+      'visualization_tool/data/refinebench_samples.json',
+      'static/data/refinebench_samples.json'
+    ];
+    let DATA_FILE = DATA_PATHS[0]; // Default to first path
 
     const selField = document.getElementById('field-select');
     const selIndex = document.getElementById('index-select');
@@ -101,25 +108,45 @@
 
     // Load data file
     async function loadData(){
-      console.log('Loading data from:', DATA_FILE);
-      try{
-        const res = await fetch(DATA_FILE);
-        if(!res.ok) throw new Error(`Data file not found (${res.status})`);
-        allData = await res.json();
-        allFields = Object.keys(allData).sort();
-        console.log(`Loaded ${allFields.length} fields`);
-        
-        populateFieldSelect();
-        
-        // Auto-load first problem
-        await loadDefaultProblem();
-      }catch(err){
-        console.error('Unable to load data:', err);
-        if (selField) selField.innerHTML = '<option disabled>No data found</option>';
-        if (vizLoading) {
-          vizLoading.innerHTML = `<p style="color:red;">Failed to load dataset: ${err.message}</p>`;
+      console.log('Attempting to load data from multiple paths...');
+      
+      // Try loading from different paths
+      let loaded = false;
+      for (const path of DATA_PATHS) {
+        try {
+          console.log(`Trying to load from: ${path}`);
+          const res = await fetch(path);
+          if (res.ok) {
+            const data = await res.json();
+            allData = data;
+            allFields = Object.keys(allData).sort();
+            console.log(`✅ Successfully loaded ${allFields.length} fields from ${path}`);
+            console.log(`Fields: ${allFields.join(', ')}`);
+            loaded = true;
+            break;
+          } else {
+            console.log(`Failed to load from ${path}: HTTP ${res.status}`);
+          }
+        } catch (err) {
+          console.log(`Failed to load from ${path}:`, err.message);
+          continue;
         }
       }
+      
+      if (!loaded) {
+        const errorMsg = `Unable to load data from any of the following paths: ${DATA_PATHS.join(', ')}`;
+        console.error(errorMsg);
+        if (selField) selField.innerHTML = '<option disabled>No data found</option>';
+        if (vizLoading) {
+          vizLoading.innerHTML = `<p style="color:red;">Failed to load dataset. Please check browser console for details.</p><p style="color:gray; font-size:0.9em;">Tried paths: ${DATA_PATHS.join(', ')}</p>`;
+        }
+        return;
+      }
+      
+      populateFieldSelect();
+      
+      // Auto-load first problem
+      await loadDefaultProblem();
     }
 
     function populateFieldSelect() {
