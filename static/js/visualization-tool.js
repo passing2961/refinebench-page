@@ -1,11 +1,10 @@
-/* <span class="ineq-blue">Ineq</span><span class="ineq-red">Math</span> Visualization Tool (static frontend version)
-   Loads problem list and data from visualization_tool/data directory (served statically).
-   Allows editing of problem and solution, live MathJax preview, and localStorage save.
-   Updated for Problem Checker & Editor layout.
+/* RefineBench Visualization Tool (static frontend version)
+   Loads problem data from visualization_tool/data/refinebench_samples.json (served statically).
+   Allows browsing problems by field and index with live MathJax preview.
 */
 
 (function(){
-  console.log('Visualization tool script starting...');
+  console.log('RefineBench Visualization tool script starting...');
   
   function waitForMathJax(callback) {
     if (window.MathJax && MathJax.typesetPromise) {
@@ -25,45 +24,70 @@
   }
   
   function initVisualizationTool() {
-    console.log('Initializing visualization tool...');
+    console.log('Initializing RefineBench visualization tool...');
     
-    const DATA_BASE = './visualization_tool/data'; // relative path
-    const INDEX_FILE = `${DATA_BASE}/index.json`;
+    const DATA_FILE = './visualization_tool/data/refinebench_samples.json';
 
-    const selSplit = document.getElementById('split-select');
-    const selId = document.getElementById('id-select');
+    const selField = document.getElementById('field-select');
+    const selIndex = document.getElementById('index-select');
     const btnPrev = document.getElementById('prev-problem');
     const btnNext = document.getElementById('next-problem');
-    const renderProblem = document.getElementById('problem-render');
-    const renderAnswer = document.getElementById('answer-render');
-    const renderSolution = document.getElementById('solution-render');
-    const renderTheorems = document.getElementById('theorems-render');
+    const renderQuestion = document.getElementById('question');
+    const renderAnswer = document.getElementById('reference_answer');
+    const renderMaterials = document.getElementById('materials');
+    const renderComment = document.getElementById('comment');
+    const renderChecklist = document.getElementById('checklist');
     const vizContent = document.getElementById('viz-content');
     const vizLoading = document.getElementById('viz-loading');
 
-    if (!selSplit || !selId) {
-      console.error('Could not find split-select or id-select elements');
+    // Metadata elements
+    const metaField = document.getElementById('meta-field');
+    const metaSubject = document.getElementById('meta-subject');
+    const metaInstitution = document.getElementById('meta-institution');
+    const metaYear = document.getElementById('meta-year');
+    const metaExam = document.getElementById('meta-exam');
+
+    if (!selField || !selIndex) {
+      console.error('Could not find field-select or index-select elements');
       return;
     }
     
     console.log('Found all required DOM elements');
 
-    let currentKey = null;
-    let currentObj = null;
-    let allProblems = {}; // Organized by split
-    let currentSplit = null;
-    let currentId = null;
+    let allData = {};
+    let allFields = [];
+    let currentField = null;
+    let currentIndex = null;
+    let currentProblem = null;
 
     // Render with MathJax
-    function updateRender(problemText, answerText, solutionText, theoremsHtml) {
+    function updateRender(questionText, answerText, materialsText, commentText, checklistItems) {
       console.log('Updating render...');
-      renderProblem.innerHTML = problemText || '';
-      renderAnswer.innerHTML = answerText || '';
-      renderSolution.innerHTML = solutionText || '';
-      if (renderTheorems) renderTheorems.innerHTML = theoremsHtml || '';
       
-      const elementsToRender = [renderProblem, renderAnswer, renderSolution];
-      if (renderTheorems) elementsToRender.push(renderTheorems);
+      if (renderQuestion) renderQuestion.innerHTML = questionText || '';
+      if (renderAnswer) renderAnswer.innerHTML = answerText || '';
+      if (renderMaterials) renderMaterials.innerHTML = materialsText || '';
+      if (renderComment) renderComment.innerHTML = commentText || '';
+      
+      // Update checklist
+      if (renderChecklist) {
+        const checklistContainer = document.getElementById('checklist');
+        if (checklistContainer) {
+          checklistContainer.innerHTML = '';
+          (checklistItems || []).forEach((item) => {
+            const li = document.createElement('li');
+            li.style.cssText = 'padding:8px 12px; border-bottom:1px solid #eee; display:flex; align-items:center; gap:10px;';
+            li.innerHTML = `<span style="color:#ED8537;">✔️</span> <span>${item}</span>`;
+            checklistContainer.appendChild(li);
+          });
+        }
+      }
+      
+      const elementsToRender = [];
+      if (renderQuestion) elementsToRender.push(renderQuestion);
+      if (renderAnswer) elementsToRender.push(renderAnswer);
+      if (renderMaterials) elementsToRender.push(renderMaterials);
+      if (renderComment) elementsToRender.push(renderComment);
       
       if(window.MathJax && MathJax.typesetPromise){
         console.log('Typesetting with MathJax...');
@@ -75,158 +99,111 @@
       }
     }
 
-    // Format theorems for display
-    function formatTheorems(theorems) {
-      if (!theorems || typeof theorems !== 'object' || Object.keys(theorems).length === 0) {
-        return '<p style="color: #666; font-style: italic;">No theorems available for this problem.</p>';
-      }
-
-      let html = '';
-      let theoremCount = 0;
-      
-      Object.keys(theorems).forEach(theoremKey => {
-        const theoremData = theorems[theoremKey];
-        theoremCount++;
-        if (!theoremData) {
-          html += `<div style="margin-bottom: 20px; padding: 15px; border-left: 4px solid #B22222; background-color: #F5F7FA;">
-            <div style=\"color: #B22222; font-style: italic;\">No theorem information available.</div>
-          </div>`;
-          return;
-        }
-        const nickname = theoremData.Nickname && theoremData.Nickname.length > 0 ? theoremData.Nickname[0] : 'Unnamed Theorem';
-        const category = theoremData.Theorem_Category || 'Uncategorized';
-        const content = theoremData.Theorem || 'No content available';
-
-        html += `
-          <div style="margin-bottom: 20px; padding: 15px; border-left: 4px solid #B22222; background-color: #F5F7FA;">
-            <div style="margin-bottom: 8px;">
-              <strong style="color: #B22222;">${theoremKey}: ${nickname}</strong>
-            </div>
-            <div style="margin-bottom: 8px; color: #666; font-size: 14px;">
-              (<strong>Category:</strong> ${category})
-            </div>
-            <div style="margin-top: 10px;">
-              ${content}
-            </div>
-          </div>
-        `;
-      });
-
-      return html || '<p style="color: #666; font-style: italic;">No theorems available for this problem.</p>';
-    }
-
-    // Load index.json listing problem keys
-    async function loadIndex(){
-      console.log('Loading index from:', INDEX_FILE);
+    // Load data file
+    async function loadData(){
+      console.log('Loading data from:', DATA_FILE);
       try{
-        const res = await fetch(INDEX_FILE);
-        if(!res.ok) throw new Error(`index.json not found (${res.status})`);
-        const keys = await res.json();
-        console.log(`Loaded ${keys.length} problem keys`);
-        organizeProblems(keys);
+        const res = await fetch(DATA_FILE);
+        if(!res.ok) throw new Error(`Data file not found (${res.status})`);
+        allData = await res.json();
+        allFields = Object.keys(allData).sort();
+        console.log(`Loaded ${allFields.length} fields`);
         
-        // Auto-load default problem (train_0) after organizing problems
+        populateFieldSelect();
+        
+        // Auto-load first problem
         await loadDefaultProblem();
       }catch(err){
-        console.error('Unable to load index.json:', err);
-        selSplit.innerHTML = '<option disabled>No index.json found</option>';
+        console.error('Unable to load data:', err);
+        if (selField) selField.innerHTML = '<option disabled>No data found</option>';
+        if (vizLoading) {
+          vizLoading.innerHTML = `<p style="color:red;">Failed to load dataset: ${err.message}</p>`;
+        }
       }
     }
 
-    function organizeProblems(keys) {
-      allProblems = { dev: [], test: [], train: [] };
+    function populateFieldSelect() {
+      if (!selField) return;
       
-      keys.forEach(key => {
-        const [split, id] = key.split('_');
-        if (allProblems[split]) {
-          allProblems[split].push(id);
-        }
+      selField.innerHTML = '<option value="" disabled selected>Select Field</option>';
+      allFields.forEach(field => {
+        const opt = document.createElement('option');
+        opt.value = field;
+        opt.textContent = field;
+        selField.appendChild(opt);
       });
-
-      // Sort IDs numerically
-      Object.keys(allProblems).forEach(split => {
-        allProblems[split].sort((a, b) => parseInt(a) - parseInt(b));
-      });
-
-      console.log('Organized problems:', allProblems);
+      
+      console.log(`Field select populated with ${allFields.length} options`);
     }
 
-    // Load default problem (train_0)
-    async function loadDefaultProblem() {
-      console.log('Loading default problem: train_0');
+    function populateIndexSelect(field) {
+      if (!selIndex) return;
       
-      // Set default values in dropdowns
-      if (allProblems.train && allProblems.train.length > 0) {
-        // Set split dropdown to "train"
-        selSplit.value = 'train';
-        
-        // Populate ID dropdown for train split
-        populateIdSelect('train');
-        
-        // Set ID dropdown to "0" if it exists
-        const firstId = allProblems.train[0];
-        if (firstId !== undefined) {
-          selId.value = firstId;
-          
-          // Load the problem
-          await loadProblem('train', firstId);
-        }
-      } else {
-        console.warn('No training problems found for default load');
-      }
-    }
-
-    function populateIdSelect(split) {
-      console.log('Populating ID select for split:', split);
-      selId.innerHTML = '<option value="" disabled selected>Select ID</option>';
+      console.log('Populating index select for field:', field);
+      selIndex.innerHTML = '<option value="" disabled selected>Select Index</option>';
       
-      if (!allProblems[split]) {
-        selId.disabled = true;
+      if (!allData[field] || allData[field].length === 0) {
+        selIndex.disabled = true;
         return;
       }
 
-      allProblems[split].forEach(id => {
+      allData[field].forEach((item, idx) => {
         const opt = document.createElement('option');
-        opt.value = id;
-        opt.textContent = id;
-        selId.appendChild(opt);
+        opt.value = idx.toString();
+        opt.textContent = `#${item.index || idx}`;
+        selIndex.appendChild(opt);
       });
       
-      selId.disabled = false;
+      selIndex.disabled = false;
       
-      // Auto-select ID 0 or the first available ID
-      const firstId = allProblems[split][0];
-      if (firstId !== undefined) {
-        selId.value = firstId;
-        console.log(`Auto-selected ID: ${firstId} for split: ${split}`);
+      // Auto-select first index
+      const firstIdx = 0;
+      if (firstIdx !== undefined) {
+        selIndex.value = firstIdx.toString();
+        console.log(`Auto-selected index: ${firstIdx} for field: ${field}`);
       }
       
-      console.log(`ID select populated with ${allProblems[split].length} options`);
+      console.log(`Index select populated with ${allData[field].length} options`);
     }
 
-    async function loadProblem(split, id){
-      if(!split || !id) return;
+    // Load default problem (first field, first index)
+    async function loadDefaultProblem() {
+      console.log('Loading default problem');
       
-      const key = `${split}_${id}`;
-      console.log('Loading problem:', key);
+      if (allFields.length > 0) {
+        const firstField = allFields[0];
+        selField.value = firstField;
+        populateIndexSelect(firstField);
+        
+        const firstIdx = 0;
+        if (firstIdx !== undefined) {
+          selIndex.value = firstIdx.toString();
+          await loadProblem(firstField, firstIdx);
+        }
+      } else {
+        console.warn('No fields found for default load');
+      }
+    }
+
+    async function loadProblem(field, index){
+      if(!field || index === null || index === undefined) return;
       
-      const filePath = `${DATA_BASE}/${split}.json`;
+      console.log('Loading problem:', field, index);
+      
       try{
-        console.log('Fetching:', filePath);
-        const res = await fetch(filePath);
-        if(!res.ok) throw new Error(`file fetch failed (${res.status})`);
-        const arr = await res.json();
-        console.log(`Loaded ${arr.length} problems from ${split}.json`);
-        const obj = arr.find(o=>String(o.data_id)===String(id));
-        if(!obj) throw new Error('problem not found');
-        console.log('Found problem object:', obj);
+        const fieldData = allData[field];
+        if (!fieldData || !fieldData[index]) {
+          throw new Error('Problem not found');
+        }
         
-        currentKey = key;
-        currentObj = obj;
-        currentSplit = split;
-        currentId = id;
+        const problem = fieldData[index];
+        console.log('Found problem:', problem);
         
-        displayProblem(obj);
+        currentField = field;
+        currentIndex = parseInt(index);
+        currentProblem = problem;
+        
+        displayProblem(problem);
         updateNavigationButtons();
       }catch(err){
         console.error('Error loading problem:', err);
@@ -234,95 +211,85 @@
       }
     }
 
-    function displayProblem(obj){
-      console.log('Displaying problem:', obj);
-      vizContent.style.display='block';
-      vizLoading.style.display='none';
+    function displayProblem(problem){
+      console.log('Displaying problem:', problem);
       
-      const problemText = obj.problem || obj.source_proof_problem || '';
-      const answerText = obj.answer || obj.answer_bound || '';
-      const solutionText = obj.solution || obj.source_proof_solution || '';
-      const theoremsHtml = obj.theorems ? formatTheorems(obj.theorems) : '';
+      if (vizContent) vizContent.style.display = 'block';
+      if (vizLoading) vizLoading.style.display = 'none';
       
-      // Get the answer and solution sections
-      const answerSection = document.querySelector('#viz-content > div:nth-child(2)'); // Answer section
-      const theoremsSection = document.querySelector('#viz-content > div:nth-child(3)'); // Theorems section
-      const solutionSection = document.querySelector('#viz-content > div:nth-child(4)'); // Solution section
+      // Update metadata
+      if (metaField) metaField.innerText = `Field: ${problem.field || '—'}`;
+      if (metaSubject) metaSubject.innerText = `Subject: ${problem.subject || '—'}`;
+      if (metaInstitution) metaInstitution.innerText = `Institution: ${problem.institution || '—'}`;
+      if (metaYear) metaYear.innerText = `Year: ${problem.year || '—'}/${problem.month || '—'}`;
+      if (metaExam) metaExam.innerText = `Exam: ${problem.exam_type || '—'}`;
       
-      // Conditional display based on data split
-      if (currentSplit === 'test') {
-        // Test problems: Hide answer, solution, and theorems
-        if (answerSection) answerSection.style.display = 'none';
-        if (solutionSection) solutionSection.style.display = 'none';
-        if (theoremsSection) theoremsSection.style.display = 'none';
-        updateRender(problemText, '', '', '');
-      } else if (currentSplit === 'dev') {
-        // Dev problems: Show answer, hide solution and theorems
-        if (answerSection) answerSection.style.display = 'block';
-        if (solutionSection) solutionSection.style.display = 'none';
-        if (theoremsSection) theoremsSection.style.display = 'none';
-        updateRender(problemText, answerText, '', '');
-      } else {
-        // Train problems: Show all sections including theorems
-        if (answerSection) answerSection.style.display = 'block';
-        if (solutionSection) solutionSection.style.display = 'block';
-        if (theoremsSection) theoremsSection.style.display = 'block';
-        updateRender(problemText, answerText, solutionText, theoremsHtml);
-      }
+      // Format content
+      const questionText = problem.question || '';
+      const answerText = Array.isArray(problem.reference_answer) 
+        ? problem.reference_answer.join('<br><br>') 
+        : (problem.reference_answer || '');
+      const materialsText = Array.isArray(problem.materials) 
+        ? problem.materials.join('<br><br>') 
+        : (problem.materials || '');
+      const commentText = Array.isArray(problem.comment) 
+        ? problem.comment.join('<br><br>') 
+        : (problem.comment || '');
+      const checklistItems = problem.checklist || [];
+      
+      updateRender(questionText, answerText, materialsText, commentText, checklistItems);
     }
 
     function updateNavigationButtons(){
-      if (!currentSplit || !currentId) {
+      if (!currentField || currentIndex === null || currentIndex === undefined) {
         if (btnPrev) btnPrev.disabled = true;
         if (btnNext) btnNext.disabled = true;
         return;
       }
 
-      const currentIds = allProblems[currentSplit];
-      const currentIndex = currentIds.indexOf(currentId);
+      const fieldProblems = allData[currentField] || [];
+      const totalProblems = fieldProblems.length;
       
       if (btnPrev) btnPrev.disabled = currentIndex <= 0;
-      if (btnNext) btnNext.disabled = currentIndex >= currentIds.length - 1;
+      if (btnNext) btnNext.disabled = currentIndex >= totalProblems - 1;
     }
 
     function navigateProblem(direction){
-      if (!currentSplit || !currentId) return;
+      if (currentField === null || currentIndex === null || currentIndex === undefined) return;
       
-      const currentIds = allProblems[currentSplit];
-      const currentIndex = currentIds.indexOf(currentId);
+      const fieldProblems = allData[currentField] || [];
       let newIndex = currentIndex + direction;
       
       if (newIndex < 0) newIndex = 0;
-      if (newIndex >= currentIds.length) newIndex = currentIds.length - 1;
+      if (newIndex >= fieldProblems.length) newIndex = fieldProblems.length - 1;
       
-      const newId = currentIds[newIndex];
-      selId.value = newId;
-      loadProblem(currentSplit, newId);
+      selIndex.value = newIndex.toString();
+      loadProblem(currentField, newIndex);
     }
 
     // Event listeners
-    selSplit?.addEventListener('change', ()=>{
-      const selectedSplit = selSplit.value;
-      if (selectedSplit) {
-        populateIdSelect(selectedSplit);
+    selField?.addEventListener('change', ()=>{
+      const selectedField = selField.value;
+      if (selectedField) {
+        populateIndexSelect(selectedField);
         
-        // Auto-load the first problem after populating IDs
-        const firstId = allProblems[selectedSplit] && allProblems[selectedSplit][0];
-        if (firstId !== undefined) {
-          loadProblem(selectedSplit, firstId);
+        // Auto-load the first problem after populating indices
+        const firstIdx = 0;
+        if (firstIdx !== undefined) {
+          loadProblem(selectedField, firstIdx);
         } else {
           // Clear the current problem display if no problems available
-          vizContent.style.display = 'none';
-          vizLoading.style.display = 'block';
+          if (vizContent) vizContent.style.display = 'none';
+          if (vizLoading) vizLoading.style.display = 'block';
         }
       }
     });
 
-    selId?.addEventListener('change', ()=>{
-      const selectedSplit = selSplit.value;
-      const selectedId = selId.value;
-      if (selectedSplit && selectedId) {
-        loadProblem(selectedSplit, selectedId);
+    selIndex?.addEventListener('change', ()=>{
+      const selectedField = selField.value;
+      const selectedIndex = parseInt(selIndex.value);
+      if (selectedField && !isNaN(selectedIndex)) {
+        loadProblem(selectedField, selectedIndex);
       }
     });
 
@@ -336,6 +303,6 @@
 
     // Initialize
     console.log('Starting initialization...');
-    loadIndex();
+    loadData();
   }
-})(); 
+})();

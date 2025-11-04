@@ -835,29 +835,41 @@
           <div class="underline"></div>
         </div>
 
-        <div class="box" style="border: 2px solid #ED8537; border-radius: 16px; box-shadow: 0 4px 10px rgba(237,133,55,0.2); padding: 2rem;">
+        <div class="box" style="border: 2px solid #ED8537; border-radius: 16px; box-shadow: 0 4px 10px rgba(237,133,55,0.2); padding: 0; overflow: hidden;">
+          <!-- Header Bar -->
+          <div style="background: linear-gradient(135deg, #FF9E4A 0%, #ED8537 100%); color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center;">
+            <h3 style="margin: 0; font-size: 1.2rem; font-weight: bold; color: white;">Data Visualization</h3>
+            <div style="display: flex; align-items: center; gap: 15px;">
+              <button id="prev-problem" class="button is-small" style="background: transparent; border: 1px solid white; color: white; font-weight: bold;">
+                <span class="icon"><i class="fas fa-arrow-left"></i></span>
+                <span>PREVIOUS</span>
+              </button>
+              <div class="select is-small">
+                <select id="field-select" style="background: white; color: #333; border: 2px solid #fff; font-weight: bold;">
+                  <option value="" disabled selected>Select Field</option>
+                </select>
+              </div>
+              <div class="select is-small">
+                <select id="index-select" style="background: white; color: #333; border: 2px solid #fff; font-weight: bold;" disabled>
+                  <option value="" disabled selected>Select Index</option>
+                </select>
+              </div>
+              <button id="next-problem" class="button is-small" style="background: transparent; border: 1px solid white; color: white; font-weight: bold;">
+                <span>NEXT</span>
+                <span class="icon"><i class="fas fa-arrow-right"></i></span>
+              </button>
+            </div>
+          </div>
+
+          <div style="padding: 2rem;">
           
-          <!-- ✅ Selection Controls -->
-          <div style="display:flex; gap:12px; justify-content:center; align-items:center; margin-bottom:1.5rem;">
-            <div class="select is-medium">
-              <select id="field-select" style="background:#fff; border:2px solid #ED8537; color:#333; font-weight:bold; border-radius:10px;">
-                <option value="" disabled selected>Select Field</option>
-              </select>
+            <!-- ✅ Loading Placeholder -->
+            <div id="viz-loading" style="padding: 40px; text-align: center; color: #666;">
+              <p><i class="fas fa-spinner fa-spin"></i> Loading dataset...</p>
             </div>
-            <div class="select is-medium">
-              <select id="index-select" style="background:#fff; border:2px solid #ED8537; color:#333; font-weight:bold; border-radius:10px;" disabled>
-                <option value="" disabled selected>Select Index</option>
-              </select>
-            </div>
-          </div>
 
-          <!-- ✅ Loading Placeholder -->
-          <div id="viz-loading" style="padding: 40px; text-align: center; color: #666;">
-            <p><i class="fas fa-spinner fa-spin"></i> Loading dataset...</p>
-          </div>
-
-          <!-- ✅ Visualization Content -->
-          <div id="viz-content" style="display:none;">
+            <!-- ✅ Visualization Content -->
+            <div id="viz-content" style="display:none;">
             <div class="box" style="background:#fffdf9; border:1.5px solid #ED8537; border-radius:12px; margin-bottom:1rem;">
               <h4 class="title is-5" style="color:#ED8537;">Metadata</h4>
               <div style="display:flex; flex-wrap:wrap; gap:8px; margin-top:6px;">
@@ -967,84 +979,7 @@
   <button onclick="topFunction()" id="topButton" title="Go to top">
     <i class="fas fa-arrow-up"></i>
   </button>
-<!-- ===================================== -->
-<!-- ✅ JS: Load Local JSON Instead of API -->
-<!-- ===================================== -->
-<script>
-  async function initVisualization() {
-    try {
-      const res = await fetch("./static/data/refinebench_samples.json");  // 👈 정적 JSON 파일 로드
-      const allData = await res.json();
-      const fields = Object.keys(allData).sort();
-  
-      const fieldSelect = document.getElementById("field-select");
-      const indexSelect = document.getElementById("index-select");
-  
-      fieldSelect.innerHTML = "<option value='' disabled selected>Select Field</option>";
-      fields.forEach(field => {
-        const opt = document.createElement("option");
-        opt.value = field;
-        opt.textContent = field;
-        fieldSelect.appendChild(opt);
-      });
-  
-      document.getElementById("viz-loading").innerHTML = `<p style="color:green;">✅ Dataset loaded successfully.</p>`;
-  
-      // ✅ 필드 선택 시 index 목록 표시
-      fieldSelect.addEventListener("change", () => {
-        const field = fieldSelect.value;
-        indexSelect.innerHTML = "<option value='' disabled selected>Select Index</option>";
-        (allData[field] || []).forEach((item, idx) => {
-          const opt = document.createElement("option");
-          opt.value = `${field}__${idx}`;
-          opt.textContent = `#${item.index || idx}`;
-          indexSelect.appendChild(opt);
-        });
-        indexSelect.disabled = false;
-      });
-  
-      // ✅ 인덱스 선택 시 문제 표시
-      indexSelect.addEventListener("change", () => {
-        const [field, idxStr] = indexSelect.value.split("__");
-        const idx = parseInt(idxStr);
-        const item = allData[field][idx];
-  
-        document.getElementById("viz-loading").style.display = "none";
-        document.getElementById("viz-content").style.display = "block";
-  
-        document.getElementById("meta-field").innerText = `Field: ${item.field || "—"}`;
-        document.getElementById("meta-subject").innerText = `Subject: ${item.subject || "—"}`;
-        document.getElementById("meta-institution").innerText = `Institution: ${item.institution || "—"}`;
-        document.getElementById("meta-year").innerText = `Year: ${item.year || "—"}/${item.month || "—"}`;
-        document.getElementById("meta-exam").innerText = `Exam: ${item.exam_type || "—"}`;
-  
-        document.getElementById("question").innerHTML = item.question || "";
-        document.getElementById("reference_answer").innerHTML = (item.reference_answer || []).join("<br>");
-        document.getElementById("materials").innerHTML = (item.materials || []).join("<br>");
-        document.getElementById("comment").innerHTML = (item.comment || []).join("<br>");
-  
-        const checklistContainer = document.getElementById("checklist");
-        checklistContainer.innerHTML = "";
-        (item.checklist || []).forEach((check) => {
-          const li = document.createElement("li");
-          li.style.cssText = "padding:8px 12px; border-bottom:1px solid #eee; display:flex; align-items:center; gap:10px;";
-          li.innerHTML = `<span style="color:#ED8537;">✔️</span> <span>${check}</span>`;
-          checklistContainer.appendChild(li);
-        });
-  
-        if (window.MathJax) MathJax.typesetPromise();
-        console.log(`✅ Loaded item from field=${field}, index=${idx}`);
-      });
-  
-    } catch (err) {
-      console.error("❌ Error loading dataset:", err);
-      document.getElementById("viz-loading").innerHTML = `<p style="color:red;">Failed to load dataset.</p>`;
-    }
-  }
-  
-  // 초기화
-  initVisualization();
-  </script>
+<!-- Visualization tool script will handle all the logic -->
     
 
 </html>
