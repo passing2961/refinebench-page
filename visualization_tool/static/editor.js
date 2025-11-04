@@ -8,8 +8,8 @@ function loadProblemNames() {
             const select = document.getElementById('problems-select');
             select.innerHTML = ''; // Clear existing options
             
-            // Sort the problems numerically
-            problems.sort((a, b) => a - b);
+            // Sort the problems alphabetically (they're strings like "Biology_Medicine_refinebench-000000")
+            problems.sort();
             problem_names = problems;
             console.log(problems);
 
@@ -40,8 +40,8 @@ document.getElementById('problems-select').addEventListener('change', function()
 // Call this when the page loads
 document.addEventListener('DOMContentLoaded', loadProblemNames);
 
-// Only keep problem, answer, solution
-var sections = ["problem", "answer", "solution"];
+// Only keep problem and solution for RefineBench (no answer field)
+var sections = ["problem", "solution"];
 var currData = {};
 var currProblemName = "";
 
@@ -188,7 +188,17 @@ function saveCurrentProblem() {
             }
             currData["Answer"] = ans;
         } else {
-            currData[editor.id.replace('latexInput', '')] = editor.value;
+            const fieldName = editor.id.replace('latexInput', '');
+            const value = editor.value;
+            
+            // For solution field, if it contains multiple solutions, split them back into array
+            if (fieldName === 'solution' && value.includes('[Solution')) {
+                // Split by [Solution X] markers and clean up
+                const solutions = value.split(/\[Solution \d+\]\s*/).filter(s => s.trim());
+                currData[fieldName] = solutions;
+            } else {
+                currData[fieldName] = value;
+            }
         }
     }
 
@@ -199,7 +209,10 @@ function saveCurrentProblem() {
         tags: selectedTags,
         text: document.getElementById('commentText').value
     };
-    currData["Filename"] = currProblemName;
+    
+    // Add problem_id for RefineBench
+    currData["problem_id"] = currProblemName;
+    currData["index"] = currData.index || currData.data_id || '';
 
     return fetch('/save', {
         method: 'POST',
@@ -211,6 +224,7 @@ function saveCurrentProblem() {
     .then(response => response.json())
     .then(result => {
         console.log('Save result:', result);
+        alert('Problem saved successfully!');
     })
     .catch(error => {
         console.error('Error:', error);
@@ -219,7 +233,9 @@ function saveCurrentProblem() {
 }
 
 function loadProblem(problemName) {
-    fetch(`/problem/${problemName.replace('/', '&')}`)
+    // Handle problem_id which may contain underscores
+    const encodedProblemName = encodeURIComponent(problemName);
+    fetch(`/problem/${encodedProblemName}`)
         .then(response => response.json())
         .then(data => {
             currData = data;
@@ -230,14 +246,11 @@ function loadProblem(problemName) {
             // reset latex sections
             document.getElementById('dynamicLatexSections').innerHTML = '';
 
-            let latex_sections = sections;
-            if (data.Type == "relation")
-                latex_sections = sections.filter(sec => sec !== "Answer");
-
+            // For RefineBench, always show problem and solution
             for (let sec of sections) {
                 let sec_data = '';
                 if (sec === 'solution') {
-                    // Handle multiple solutions
+                    // Handle multiple solutions (RefineBench reference_answer is an array)
                     if (Array.isArray(data.solution)) {
                         sec_data = data.solution.map((sol, index) => 
                             `[Solution ${index + 1}]\n${sol}`
@@ -249,10 +262,7 @@ function loadProblem(problemName) {
                     sec_data = data[sec] || '';
                 }
 
-                if (latex_sections.includes(sec))
-                    createLatexSection(sec, sec_data);
-                if (sec == "Answer" && data.Type == "relation") 
-                    createAnswerSection(sec_data);
+                createLatexSection(sec, sec_data);
             }
 
             // render latex

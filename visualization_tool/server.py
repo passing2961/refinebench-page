@@ -1,97 +1,157 @@
-from flask import Flask, jsonify
-from datasets import load_dataset
-from flask_cors import CORS
+from flask import Flask, request, jsonify, render_template
+import json
+import os
+import re
+from urllib.parse import unquote
 
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "*"}})
 
-# ============================================================
-# ✅ 1️⃣ 데이터셋 한 번만 로드 (서버 시작 시)
-# ============================================================
-print("📦 Loading RefineBench dataset into memory...")
-DATASET = load_dataset("RefineBench/RefineBench", split="train")
-print(f"✅ Loaded {len(DATASET)} samples.")
+# Load data once at startup
+DATA_FILE = './data/refinebench_samples.json'
+all_problems = []
 
-# field 리스트 미리 정규화 (중복 제거)
-FIELDS = sorted(set([
-    str(x.get("field", "")).strip()
-    for x in DATASET if x.get("field")
-]))
+def load_data():
+    """Load and flatten RefineBench data structure"""
+    global all_problems
+    all_problems = []
+    
+    with open(DATA_FILE, 'r') as f:
+        data = json.load(f)
+    
+    # Flatten the nested structure (field -> list of problems)
+    for field_name, problems in data.items():
+        for problem in problems:
+            # Create unique identifier: field_index
+            problem_id = f"{field_name.replace('/', '_')}_{problem['index']}"
+            # Map RefineBench fields to expected format
+            mapped_problem = {
+                'data_id': problem['index'],
+                'problem': problem.get('question', ''),
+                'solution': problem.get('reference_answer', []),
+                'answer': '',  # RefineBench doesn't have a direct answer field
+                'field': problem.get('field', ''),
+                'subject': problem.get('subject', ''),
+                'index': problem.get('index', ''),
+                'materials': problem.get('materials', []),
+                'comment': problem.get('comment', []),
+                'checklist': problem.get('checklist', []),
+                'institution': problem.get('institution', ''),
+                'year': problem.get('year', ''),
+                'month': problem.get('month', ''),
+                'exam_type': problem.get('exam_type', ''),
+                'problem_set': problem.get('problem_set', ''),
+                'sub_problem': problem.get('sub_problem', ''),
+                'filename': 'refinebench_samples'  # Single file name
+            }
+            # Store the problem_id for lookup
+            mapped_problem['problem_id'] = problem_id
+            all_problems.append(mapped_problem)
+    
+    print(f"✅ Loaded {len(all_problems)} problems from RefineBench")
 
-# ============================================================
-# ✅ 루트 안내
-# ============================================================
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({
-        "message": "RefineBench API is running ✅",
-        "available_endpoints": ["/fields", "/indices/<field>", "/problem/<idx>"]
-    })
+# Load data at startup
+load_data()
 
+@app.route('/')
+def index():
+    return render_template('editor.html')
 
-# ============================================================
-# ✅ 2️⃣ API: Field 목록
-# ============================================================
-@app.route("/fields", methods=["GET"])
-def get_fields():
-    return jsonify(FIELDS)
+@app.route('/problems', methods=['GET'])
+def get_problems():
+    """Return list of all problem identifiers"""
+    problem_keys = [p['problem_id'] for p in all_problems]
+    return jsonify(problem_keys)
 
+@app.route('/problem/<problem_id>', methods=['GET'])
+def get_problem(problem_id):
+    """Get a specific problem by ID"""
+    # Decode URL-encoded problem_id
+    problem_id = unquote(problem_id)
+    
+    # Find the problem by problem_id
+    for problem in all_problems:
+        if problem['problem_id'] == problem_id:
+            # Return a copy without the problem_id field
+            result = {k: v for k, v in problem.items() if k != 'problem_id'}
+            return jsonify(result)
+    
+    return jsonify({'error': 'Problem not found'}), 404
 
-# ============================================================
-# ✅ 3️⃣ API: 특정 Field 내 Index 목록
-# ============================================================
-@app.route("/indices/<field>", methods=["GET"])
-def get_indices(field):
-    # 요청 필드 전처리: `_` → `/`, 소문자 및 공백 제거
-    normalized_field = str(field).replace("_", "/").strip().lower()
+@app.route('/save', methods=['POST'])
+def save_problem():
+    """Save changes to a problem"""
+    data = request.json
+    problem_id = data.get('problem_id') or data.get('index')
+    
+    if not problem_id:
+        return jsonify({'error': 'No problem identifier provided'}), 400
+    
+    # Find the problem and update it
+    found = False
+    for idx, problem in enumerate(all_problems):
+        if problem.get('problem_id') == problem_id or problem.get('index') == problem_id:
+            # Update the problem with new data
+            # Keep important fields, update editable ones
+            updated_problem = all_problems[idx].copy()
+            
+            # Handle solution field - if it's a string, try to convert back to array if needed
+            solution = data.get('solution', updated_problem.get('solution', []))
+            if isinstance(solution, str) and solution.strip():
+                # If it's a string with [Solution X] markers, try to split
+                if '[Solution' in solution:
+                    import re
+                    solutions = [s.strip() for s in re.split(r'\[Solution \d+\]\s*', solution) if s.strip()]
+                    solution = solutions if solutions else [solution]
+                else:
+                    solution = [solution]
+            elif not isinstance(solution, list):
+                solution = [solution] if solution else []
+            
+            updated_problem.update({
+                'problem': data.get('problem', updated_problem.get('problem', '')),
+                'solution': solution,
+                'answer': data.get('answer', updated_problem.get('answer', '')),
+                'comments': data.get('comments', updated_problem.get('comments', {}))
+            })
+            all_problems[idx] = updated_problem
+            found = True
+            break
+    
+    if not found:
+        return jsonify({'error': 'Problem not found'}), 404
+    
+    # Save back to file
+    # Reconstruct the nested structure
+    saved_data = {}
+    for problem in all_problems:
+        field = problem.get('field', 'Unknown')
+        if field not in saved_data:
+            saved_data[field] = []
+        
+        # Convert back to original format
+        original_problem = {
+            'index': problem.get('index', ''),
+            'field': field,
+            'subject': problem.get('subject', ''),
+            'question': problem.get('problem', ''),
+            'reference_answer': problem.get('solution', []),
+            'materials': problem.get('materials', []),
+            'comment': problem.get('comment', []),
+            'checklist': problem.get('checklist', []),
+            'institution': problem.get('institution', ''),
+            'year': problem.get('year', ''),
+            'month': problem.get('month', ''),
+            'exam_type': problem.get('exam_type', ''),
+            'problem_set': problem.get('problem_set', ''),
+            'sub_problem': problem.get('sub_problem', '')
+        }
+        saved_data[field].append(original_problem)
+    
+    # Write back to file
+    with open(DATA_FILE, 'w') as f:
+        json.dump(saved_data, f, indent=2)
+    
+    return jsonify({'message': 'Problem saved'}), 200
 
-    indices = []
-    for i, item in enumerate(DATASET):
-        item_field = str(item.get("field", "")).strip().lower()
-        # "/" 및 공백 제거 후 비교 (둘 다 동일한 방식으로)
-        if item_field.replace(" ", "").replace("/", "_") == normalized_field.replace(" ", "").replace("/", "_"):
-            indices.append(str(i))
-
-    print(f"✅ Field '{field}' → Found {len(indices)} problems")
-    return jsonify(indices)
-
-
-# ============================================================
-# ✅ 4️⃣ API: 문제 상세 정보
-# ============================================================
-@app.route("/problem/<idx>", methods=["GET"])
-def get_problem(idx):
-    try:
-        idx = int(idx)
-    except ValueError:
-        return jsonify({"error": "Invalid index"}), 400
-
-    if idx >= len(DATASET):
-        return jsonify({"error": "Index out of range"}), 404
-
-    item = DATASET[idx]
-    result = {
-        "index": item.get("index"),
-        "field": item.get("field"),
-        "subject": item.get("subject"),
-        "question": item.get("question"),
-        "reference_answer": item.get("reference_answer", []),
-        "materials": item.get("materials", []),
-        "comment": item.get("comment", []),
-        "checklist": item.get("checklist", []),
-        "institution": item.get("institution", ""),
-        "year": item.get("year", ""),
-        "month": item.get("month", ""),
-        "exam_type": item.get("exam_type", ""),
-        "problem_set": item.get("problem_set", ""),
-        "sub_problem": item.get("sub_problem", ""),
-    }
-    print(f"📘 Loaded problem #{idx} (field={result['field']})")
-    return jsonify(result)
-
-
-# ============================================================
-# ✅ 5️⃣ 서버 실행
-# ============================================================
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080, debug=True)
+if __name__ == '__main__':
+    app.run(host='0.0.0.0', port=8080)
