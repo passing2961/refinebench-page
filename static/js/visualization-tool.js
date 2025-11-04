@@ -6,21 +6,15 @@
 (function(){
   console.log('RefineBench Visualization tool script starting...');
   
-  function waitForMathJax(callback) {
-    if (window.MathJax && MathJax.typesetPromise) {
-      callback();
-    } else {
-      setTimeout(() => waitForMathJax(callback), 50);
-    }
-  }
-
-  // Wait for DOM to be ready and MathJax to be loaded
+  // Wait for DOM to be ready (don't wait for MathJax - we can load data without it)
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function() {
-      waitForMathJax(initVisualizationTool);
+      console.log('DOM loaded, initializing visualization tool...');
+      initVisualizationTool();
     });
   } else {
-    waitForMathJax(initVisualizationTool);
+    console.log('DOM already loaded, initializing visualization tool...');
+    initVisualizationTool();
   }
   
   function initVisualizationTool() {
@@ -33,7 +27,6 @@
       'visualization_tool/data/refinebench_samples.json',
       'static/data/refinebench_samples.json'
     ];
-    let DATA_FILE = DATA_PATHS[0]; // Default to first path
 
     const selField = document.getElementById('field-select');
     const selIndex = document.getElementById('index-select');
@@ -56,10 +49,14 @@
 
     if (!selField || !selIndex) {
       console.error('Could not find field-select or index-select elements');
+      console.error('selField:', selField, 'selIndex:', selIndex);
+      if (vizLoading) {
+        vizLoading.innerHTML = '<p style="color:red;">Error: Required DOM elements not found. Check console.</p>';
+      }
       return;
     }
     
-    console.log('Found all required DOM elements');
+    console.log('✅ Found all required DOM elements');
 
     let allData = {};
     let allFields = [];
@@ -96,13 +93,23 @@
       if (renderMaterials) elementsToRender.push(renderMaterials);
       if (renderComment) elementsToRender.push(renderComment);
       
+      // Try to render MathJax if available (but don't block if it's not loaded yet)
       if(window.MathJax && MathJax.typesetPromise){
         console.log('Typesetting with MathJax...');
         MathJax.typesetPromise(elementsToRender).catch(err => {
           console.error('MathJax error:', err);
         });
       } else {
-        console.warn('MathJax not available');
+        // MathJax might not be loaded yet, but that's okay - content will still display
+        console.log('MathJax not available yet, will retry when content is updated');
+        // Retry after a short delay
+        setTimeout(() => {
+          if(window.MathJax && MathJax.typesetPromise){
+            MathJax.typesetPromise(elementsToRender).catch(err => {
+              console.error('MathJax error on retry:', err);
+            });
+          }
+        }, 1000);
       }
     }
 
@@ -110,42 +117,55 @@
     async function loadData(){
       console.log('Attempting to load data from multiple paths...');
       
+      if (vizLoading) {
+        vizLoading.innerHTML = '<p><i class="fas fa-spinner fa-spin"></i> Loading dataset...</p>';
+      }
+      
       // Try loading from different paths
       let loaded = false;
+      let lastError = null;
+      
       for (const path of DATA_PATHS) {
         try {
           console.log(`Trying to load from: ${path}`);
           const res = await fetch(path);
+          console.log(`Response status: ${res.status} for ${path}`);
+          
           if (res.ok) {
             const data = await res.json();
             allData = data;
             allFields = Object.keys(allData).sort();
             console.log(`✅ Successfully loaded ${allFields.length} fields from ${path}`);
-            console.log(`Fields: ${allFields.join(', ')}`);
+            console.log(`Fields: ${allFields.slice(0, 5).join(', ')}${allFields.length > 5 ? '...' : ''}`);
             loaded = true;
             break;
           } else {
-            console.log(`Failed to load from ${path}: HTTP ${res.status}`);
+            const errorText = `HTTP ${res.status}`;
+            console.log(`❌ Failed to load from ${path}: ${errorText}`);
+            lastError = errorText;
           }
         } catch (err) {
-          console.log(`Failed to load from ${path}:`, err.message);
+          console.log(`❌ Failed to load from ${path}:`, err.message);
+          lastError = err.message;
           continue;
         }
       }
       
       if (!loaded) {
-        const errorMsg = `Unable to load data from any of the following paths: ${DATA_PATHS.join(', ')}`;
+        const errorMsg = `Unable to load data from any of the following paths: ${DATA_PATHS.join(', ')}. Last error: ${lastError}`;
         console.error(errorMsg);
         if (selField) selField.innerHTML = '<option disabled>No data found</option>';
         if (vizLoading) {
-          vizLoading.innerHTML = `<p style="color:red;">Failed to load dataset. Please check browser console for details.</p><p style="color:gray; font-size:0.9em;">Tried paths: ${DATA_PATHS.join(', ')}</p>`;
+          vizLoading.innerHTML = `<p style="color:red;">❌ Failed to load dataset.</p><p style="color:gray; font-size:0.9em;">Please check browser console (F12) for details.</p><p style="color:gray; font-size:0.8em;">Tried: ${DATA_PATHS.join(', ')}</p>`;
         }
         return;
       }
       
+      console.log('Populating field select...');
       populateFieldSelect();
       
       // Auto-load first problem
+      console.log('Loading default problem...');
       await loadDefaultProblem();
     }
 
