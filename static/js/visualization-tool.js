@@ -65,6 +65,19 @@
     let currentIndex = null;
     let currentProblem = null;
 
+    // HTML escape function to prevent < > [ ] from being interpreted as HTML tags
+    function escapeHtml(text) {
+      if (typeof text !== 'string') return text;
+      const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+      };
+      return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+    }
+
     // Render with MathJax
     function updateRender(questionText, answerText, materialsText, commentText, passagesText, checklistItems) {
       console.log('Updating render...');
@@ -83,7 +96,7 @@
           (checklistItems || []).forEach((item) => {
             const li = document.createElement('li');
             li.style.cssText = 'padding:8px 12px; border-bottom:1px solid #eee; display:flex; align-items:center; gap:10px;';
-            li.innerHTML = `<span style="color:#ED8537;">✔️</span> <span>${item}</span>`;
+            li.innerHTML = `<span style="color:#ED8537;">✔️</span> <span>${escapeHtml(item)}</span>`;
             checklistContainer.appendChild(li);
           });
         }
@@ -274,20 +287,21 @@
       if (metaYear) metaYear.innerText = `Year: ${problem.year || '—'}/${problem.month || '—'}`;
       if (metaExam) metaExam.innerText = `Exam: ${problem.exam_type || '—'}`;
       
-      // Format content
-      const questionText = problem.question || '';
+      // Format content - escape HTML to preserve < > [ ] characters
+      const questionText = escapeHtml(problem.question || '');
       const answerText = Array.isArray(problem.reference_answer) 
-        ? problem.reference_answer.join('<br><br>') 
-        : (problem.reference_answer || '');
+        ? problem.reference_answer.map(a => escapeHtml(a)).join('<br><br>') 
+        : escapeHtml(problem.reference_answer || '');
       const materialsText = Array.isArray(problem.materials) 
-        ? problem.materials.join('<br><br>') 
-        : (problem.materials || '');
+        ? problem.materials.map(m => escapeHtml(m)).join('<br><br>') 
+        : escapeHtml(problem.materials || '');
       const commentText = Array.isArray(problem.comment) 
-        ? problem.comment.join('<br><br>') 
-        : (problem.comment || '');
+        ? problem.comment.map(c => escapeHtml(c)).join('<br><br>') 
+        : escapeHtml(problem.comment || '');
+      // Escape HTML in passages to preserve < > [ ] characters
       const passagesText = Array.isArray(problem.passages) 
-        ? problem.passages.join('<br><br><hr style="margin: 1rem 0; border: none; border-top: 1px solid #ddd;"><br>') 
-        : (problem.passages || '');
+        ? problem.passages.map(p => escapeHtml(p)).join('<br><br><hr style="margin: 1rem 0; border: none; border-top: 1px solid #ddd;"><br>') 
+        : escapeHtml(problem.passages || '');
       const checklistItems = problem.checklist || [];
       
       updateRender(questionText, answerText, materialsText, commentText, passagesText, checklistItems);
