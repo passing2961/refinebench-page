@@ -78,6 +78,17 @@
       return text.replace(/[&<>"']/g, function(m) { return map[m]; });
     }
 
+    // Protect dollar signs in currency amounts from MathJax interpretation
+    // Uses HTML entity to prevent MathJax from interpreting $ as math delimiter
+    function protectCurrency(text) {
+      if (typeof text !== 'string') return text;
+      // Protect $ followed by digits (currency amounts like $5,000, $50,000)
+      // This pattern matches $ followed by digits, commas, and optionally a decimal point
+      // We use HTML entity &#36; to prevent MathJax from interpreting it as math delimiter
+      // Pattern: $ followed by one or more digits, optionally with commas and decimal point
+      return text.replace(/\$(\d[\d,.]*)/g, '&#36;$1');
+    }
+
     // Convert markdown to HTML (for materials field with tables)
     function markdownToHtml(text) {
       if (typeof text !== 'string') return text;
@@ -340,21 +351,23 @@
       if (metaExam) metaExam.innerText = `Exam: ${problem.exam_type || '—'}`;
       
       // Format content - escape HTML to preserve < > [ ] characters
-      const questionText = escapeHtml(problem.question || '');
+      // Also protect currency amounts ($5,000) from MathJax interpretation
+      const questionText = protectCurrency(escapeHtml(problem.question || ''));
       const answerText = Array.isArray(problem.reference_answer) 
-        ? problem.reference_answer.map(a => escapeHtml(a)).join('<br><br>') 
-        : escapeHtml(problem.reference_answer || '');
+        ? problem.reference_answer.map(a => protectCurrency(escapeHtml(a))).join('<br><br>') 
+        : protectCurrency(escapeHtml(problem.reference_answer || ''));
       // Materials field: convert markdown to HTML (for tables) but preserve <Material> tags
+      // Note: protectCurrency should be applied after markdown conversion
       const materialsText = Array.isArray(problem.materials) 
-        ? problem.materials.map(m => markdownToHtml(m)).join('<br><br>') 
-        : markdownToHtml(problem.materials || '');
+        ? problem.materials.map(m => protectCurrency(markdownToHtml(m))).join('<br><br>') 
+        : protectCurrency(markdownToHtml(problem.materials || ''));
       const commentText = Array.isArray(problem.comment) 
-        ? problem.comment.map(c => escapeHtml(c)).join('<br><br>') 
-        : escapeHtml(problem.comment || '');
+        ? problem.comment.map(c => protectCurrency(escapeHtml(c))).join('<br><br>') 
+        : protectCurrency(escapeHtml(problem.comment || ''));
       // Escape HTML in passages to preserve < > [ ] characters
       const passagesText = Array.isArray(problem.passages) 
-        ? problem.passages.map(p => escapeHtml(p)).join('<br><br><hr style="margin: 1rem 0; border: none; border-top: 1px solid #ddd;"><br>') 
-        : escapeHtml(problem.passages || '');
+        ? problem.passages.map(p => protectCurrency(escapeHtml(p))).join('<br><br><hr style="margin: 1rem 0; border: none; border-top: 1px solid #ddd;"><br>') 
+        : protectCurrency(escapeHtml(problem.passages || ''));
       const checklistItems = problem.checklist || [];
       
       updateRender(questionText, answerText, materialsText, commentText, passagesText, checklistItems);
