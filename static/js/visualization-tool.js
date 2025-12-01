@@ -76,7 +76,12 @@
       
       // Protect align environments and other math environments FIRST (before inline math)
       // These are multi-line and need to be protected before inline math matching
+      // Skip if already protected by convertLatexEnvironments
       text = text.replace(/\\begin\{(align|align\*|equation|equation\*|cases)\}[\s\S]*?\\end\{\1\}/g, (match) => {
+        // Skip if already protected
+        if (match.includes('__MATH_ENV_PROTECT_') || match.includes('__MATH_BLOCK_PROTECT_')) {
+          return match;
+        }
         const placeholder = `__MATH_ENV_${mathIndex}__`;
         protectedMath[mathIndex] = match;
         mathIndex++;
@@ -84,7 +89,12 @@
       });
       
       // Protect display math: $$...$$ or \[...\]
+      // Skip if already protected by convertLatexEnvironments
       text = text.replace(/\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]/g, (match) => {
+        // Skip if already protected
+        if (match.includes('__MATH_ENV_PROTECT_') || match.includes('__MATH_BLOCK_PROTECT_')) {
+          return match;
+        }
         const placeholder = `__MATH_BLOCK_${mathIndex}__`;
         protectedMath[mathIndex] = match;
         mathIndex++;
@@ -191,12 +201,58 @@
       
       let result = text;
       
-      // First, handle itemize and enumerate environments (list environments)
-      // These need special handling to convert \item to <li>
+      // First, protect math blocks inside environments before converting
+      // This prevents math from being damaged during environment conversion
+      const protectedMath = [];
+      let mathIndex = 0;
+      
+      // Protect align environments and other math environments
+      result = result.replace(/\\begin\{(align|align\*|equation|equation\*|cases)\}[\s\S]*?\\end\{\1\}/g, (match) => {
+        const placeholder = `__MATH_ENV_PROTECT_${mathIndex}__`;
+        protectedMath[mathIndex] = match;
+        mathIndex++;
+        return placeholder;
+      });
+      
+      // Protect display math: $$...$$ or \[...\]
+      result = result.replace(/\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]/g, (match) => {
+        const placeholder = `__MATH_BLOCK_PROTECT_${mathIndex}__`;
+        protectedMath[mathIndex] = match;
+        mathIndex++;
+        return placeholder;
+      });
       
       // Helper function to convert \item commands to <li> tags
       function convertItemsToLi(content) {
         if (!content) return '';
+        
+        // First, protect math blocks in content to avoid breaking them during item parsing
+        // Check if math is already protected (from convertLatexEnvironments)
+        const mathPlaceholders = [];
+        let mathIdx = 0;
+        const alreadyProtected = /__MATH_(ENV|BLOCK)_PROTECT_\d+__/.test(content);
+        
+        let protectedContent = content;
+        
+        // Only protect if not already protected
+        if (!alreadyProtected) {
+          // Protect align and other math environments
+          protectedContent = protectedContent.replace(/\\begin\{(align|align\*|equation|equation\*|cases)\}[\s\S]*?\\end\{\1\}/g, (match) => {
+            const placeholder = `__ITEM_MATH_${mathIdx}__`;
+            mathPlaceholders[mathIdx] = match;
+            mathIdx++;
+            return placeholder;
+          });
+          
+          // Protect display math
+          protectedContent = protectedContent.replace(/\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]/g, (match) => {
+            const placeholder = `__ITEM_MATH_${mathIdx}__`;
+            mathPlaceholders[mathIdx] = match;
+            mathIdx++;
+            return placeholder;
+          });
+        }
+        
         // Find all \item commands (with optional arguments like \item[1])
         // Pattern matches: \item or \item[...] followed by content until next \item or end
         const itemPattern = /\\item(?:\s*\[[^\]]*\])?\s*(.*?)(?=\\item|$)/gs;
@@ -206,19 +262,31 @@
         // Reset regex lastIndex
         itemPattern.lastIndex = 0;
         
-        while ((match = itemPattern.exec(content)) !== null) {
-          const itemContent = match[1];
+        while ((match = itemPattern.exec(protectedContent)) !== null) {
+          let itemContent = match[1];
           if (itemContent && itemContent.trim()) {
+            // Restore math placeholders only if we protected them (not already protected)
+            if (!alreadyProtected) {
+              mathPlaceholders.forEach((math, idx) => {
+                itemContent = itemContent.replace(`__ITEM_MATH_${idx}__`, math);
+              });
+            }
             items.push(itemContent.trim());
           }
         }
         
         // If regex didn't match (fallback), try simple split
         if (items.length === 0) {
-          const parts = content.split(/\\item/);
+          const parts = protectedContent.split(/\\item/);
           const filtered = parts.filter(part => part.trim());
           filtered.forEach(part => {
-            const trimmed = part.trim();
+            let trimmed = part.trim();
+            // Restore math placeholders only if we protected them (not already protected)
+            if (!alreadyProtected) {
+              mathPlaceholders.forEach((math, idx) => {
+                trimmed = trimmed.replace(`__ITEM_MATH_${idx}__`, math);
+              });
+            }
             if (trimmed) items.push(trimmed);
           });
         }
@@ -236,6 +304,12 @@
       result = result.replace(/\\begin\{enumerate\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{enumerate\}/g, function(match, content) {
         const listItems = convertItemsToLi(content);
         return `<ol style="margin: 0.5em 0; padding-left: 1.5em;">${listItems}</ol>`;
+      });
+      
+      // Restore protected math blocks
+      protectedMath.forEach((math, index) => {
+        result = result.replace(`__MATH_ENV_PROTECT_${index}__`, math);
+        result = result.replace(`__MATH_BLOCK_PROTECT_${index}__`, math);
       });
       
       // List of other LaTeX environments that MathJax doesn't recognize
