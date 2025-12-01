@@ -74,6 +74,15 @@
       const protectedMath = [];
       let mathIndex = 0;
       
+      // Protect align environments and other math environments FIRST (before inline math)
+      // These are multi-line and need to be protected before inline math matching
+      text = text.replace(/\\begin\{(align|align\*|equation|equation\*|cases)\}[\s\S]*?\\end\{\1\}/g, (match) => {
+        const placeholder = `__MATH_ENV_${mathIndex}__`;
+        protectedMath[mathIndex] = match;
+        mathIndex++;
+        return placeholder;
+      });
+      
       // Protect display math: $$...$$ or \[...\]
       text = text.replace(/\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]/g, (match) => {
         const placeholder = `__MATH_BLOCK_${mathIndex}__`;
@@ -82,11 +91,11 @@
         return placeholder;
       });
       
-      // Protect inline math: $...$ or \(...\)
-      // Note: Currency amounts are already protected by protectCurrency, so they won't be here
-      // Match $...$ but be careful with nested cases
-      text = text.replace(/\$[^$\n]+\$|\\\([^)]+\\\)/g, (match) => {
-        // Skip if it looks like currency (already handled)
+      // Protect inline math: $...$ 
+      // Match $...$ but be careful - need to handle cases where $ appears in the content
+      // Use non-greedy matching and handle nested cases
+      text = text.replace(/\$[^$]+\$/g, (match) => {
+        // Skip if it looks like currency (already handled by protectCurrency)
         if (/^\$\d/.test(match)) return match;
         const placeholder = `__MATH_INLINE_${mathIndex}__`;
         protectedMath[mathIndex] = match;
@@ -94,9 +103,9 @@
         return placeholder;
       });
       
-      // Protect align environments and other math environments
-      text = text.replace(/\\begin\{(align|align\*|equation|equation\*|cases)\}[\s\S]*?\\end\{\1\}/g, (match) => {
-        const placeholder = `__MATH_ENV_${mathIndex}__`;
+      // Also protect \(...\) style inline math
+      text = text.replace(/\\\([^)]+\\\)/g, (match) => {
+        const placeholder = `__MATH_INLINE_${mathIndex}__`;
         protectedMath[mathIndex] = match;
         mathIndex++;
         return placeholder;
