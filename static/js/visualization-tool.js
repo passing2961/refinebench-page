@@ -36,6 +36,7 @@
     const renderAnswer = document.getElementById('reference_answer');
     const renderMaterials = document.getElementById('materials');
     const renderComment = document.getElementById('comment');
+    const renderPassages = document.getElementById('passages');
     const renderChecklist = document.getElementById('checklist');
     const vizContent = document.getElementById('viz-content');
     const vizLoading = document.getElementById('viz-loading');
@@ -65,13 +66,14 @@
     let currentProblem = null;
 
     // Render with MathJax
-    function updateRender(questionText, answerText, materialsText, commentText, checklistItems) {
+    function updateRender(questionText, answerText, materialsText, commentText, passagesText, checklistItems) {
       console.log('Updating render...');
       
       if (renderQuestion) renderQuestion.innerHTML = questionText || '';
       if (renderAnswer) renderAnswer.innerHTML = answerText || '';
       if (renderMaterials) renderMaterials.innerHTML = materialsText || '';
       if (renderComment) renderComment.innerHTML = commentText || '';
+      if (renderPassages) renderPassages.innerHTML = passagesText || '';
       
       // Update checklist
       if (renderChecklist) {
@@ -92,6 +94,7 @@
       if (renderAnswer) elementsToRender.push(renderAnswer);
       if (renderMaterials) elementsToRender.push(renderMaterials);
       if (renderComment) elementsToRender.push(renderComment);
+      if (renderPassages) elementsToRender.push(renderPassages);
       
       // Try to render MathJax if available (but don't block if it's not loaded yet)
       if(window.MathJax && MathJax.typesetPromise){
@@ -282,9 +285,12 @@
       const commentText = Array.isArray(problem.comment) 
         ? problem.comment.join('<br><br>') 
         : (problem.comment || '');
+      const passagesText = Array.isArray(problem.passages) 
+        ? problem.passages.join('<br><br><hr style="margin: 1rem 0; border: none; border-top: 1px solid #ddd;"><br>') 
+        : (problem.passages || '');
       const checklistItems = problem.checklist || [];
       
-      updateRender(questionText, answerText, materialsText, commentText, checklistItems);
+      updateRender(questionText, answerText, materialsText, commentText, passagesText, checklistItems);
     }
 
     function updateNavigationButtons(){
