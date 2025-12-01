@@ -78,6 +78,58 @@
       return text.replace(/[&<>"']/g, function(m) { return map[m]; });
     }
 
+    // Convert markdown to HTML (for materials field with tables)
+    function markdownToHtml(text) {
+      if (typeof text !== 'string') return text;
+      
+      // Check if markdown-it is available (try both window.markdownit and markdownit)
+      const MarkdownIt = window.markdownit || (typeof markdownit !== 'undefined' ? markdownit : null);
+      if (!MarkdownIt) {
+        // Fallback: just escape HTML if markdown-it is not loaded
+        return escapeHtml(text);
+      }
+      
+      // Preserve <Material1>, <Material2> etc. tags by temporarily replacing them
+      const tagPattern = /<Material\d+[^>]*>/gi;
+      const tags = [];
+      let tagIndex = 0;
+      
+      // Replace tags with placeholders
+      const textWithPlaceholders = text.replace(tagPattern, (match) => {
+        const placeholder = `__MATERIAL_TAG_${tagIndex}__`;
+        tags[tagIndex] = match;
+        tagIndex++;
+        return placeholder;
+      });
+      
+      // Initialize markdown-it (can be called as function or constructor)
+      let mdRenderer;
+      try {
+        mdRenderer = MarkdownIt({
+          html: true,
+          breaks: true,
+          linkify: true
+        });
+      } catch (e) {
+        // Fallback: try as constructor
+        mdRenderer = new MarkdownIt({
+          html: true,
+          breaks: true,
+          linkify: true
+        });
+      }
+      
+      // Convert markdown to HTML
+      let html = mdRenderer.render(textWithPlaceholders);
+      
+      // Restore the original tags (but escape them for HTML)
+      tags.forEach((tag, index) => {
+        html = html.replace(`__MATERIAL_TAG_${index}__`, escapeHtml(tag));
+      });
+      
+      return html;
+    }
+
     // Render with MathJax
     function updateRender(questionText, answerText, materialsText, commentText, passagesText, checklistItems) {
       console.log('Updating render...');
@@ -292,9 +344,10 @@
       const answerText = Array.isArray(problem.reference_answer) 
         ? problem.reference_answer.map(a => escapeHtml(a)).join('<br><br>') 
         : escapeHtml(problem.reference_answer || '');
+      // Materials field: convert markdown to HTML (for tables) but preserve <Material> tags
       const materialsText = Array.isArray(problem.materials) 
-        ? problem.materials.map(m => escapeHtml(m)).join('<br><br>') 
-        : escapeHtml(problem.materials || '');
+        ? problem.materials.map(m => markdownToHtml(m)).join('<br><br>') 
+        : markdownToHtml(problem.materials || '');
       const commentText = Array.isArray(problem.comment) 
         ? problem.comment.map(c => escapeHtml(c)).join('<br><br>') 
         : escapeHtml(problem.comment || '');
