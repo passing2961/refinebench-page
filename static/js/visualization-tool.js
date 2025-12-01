@@ -66,8 +66,23 @@
     let currentProblem = null;
 
     // HTML escape function to prevent < > [ ] from being interpreted as HTML tags
+    // But preserve HTML tags created by convertLatexEnvironments
     function escapeHtml(text) {
       if (typeof text !== 'string') return text;
+      
+      // First, protect HTML tags created by convertLatexEnvironments
+      const protectedTags = [];
+      let tagIndex = 0;
+      const tagPattern = /<div class="latex-env-[^"]+"[^>]*>[\s\S]*?<\/div>/g;
+      
+      const textWithProtectedTags = text.replace(tagPattern, (match) => {
+        const placeholder = `__LATEX_ENV_TAG_${tagIndex}__`;
+        protectedTags[tagIndex] = match;
+        tagIndex++;
+        return placeholder;
+      });
+      
+      // Now escape HTML
       const map = {
         '&': '&amp;',
         '<': '&lt;',
@@ -75,7 +90,14 @@
         '"': '&quot;',
         "'": '&#039;'
       };
-      return text.replace(/[&<>"']/g, function(m) { return map[m]; });
+      let escaped = textWithProtectedTags.replace(/[&<>"']/g, function(m) { return map[m]; });
+      
+      // Restore protected HTML tags
+      protectedTags.forEach((tag, index) => {
+        escaped = escaped.replace(`__LATEX_ENV_TAG_${index}__`, tag);
+      });
+      
+      return escaped;
     }
 
     // Protect dollar signs in currency amounts from MathJax interpretation
@@ -90,6 +112,32 @@
       return text.replace(/\$(\d+(?:,\d{3})*(?:\.\d+)?)/g, function(match, amount) {
         return '<span class="currency" data-mathjax-ignore="true">$' + amount + '</span>';
       });
+    }
+
+    // Convert LaTeX environments to HTML to prevent MathJax "Unknown environment" errors
+    // This function converts LaTeX environments to HTML before HTML escaping
+    function convertLatexEnvironments(text) {
+      if (typeof text !== 'string') return text;
+      
+      // List of LaTeX environments that MathJax doesn't recognize
+      const environments = ['definition', 'problem', 'theorem', 'lemma', 'proposition', 'corollary', 'example', 'remark'];
+      
+      let result = text;
+      
+      // Convert each environment to HTML
+      environments.forEach(env => {
+        // Match \begin{env}...\end{env} or \begin{env}[label]...\end{env}
+        // Use a more robust pattern that captures the entire environment content
+        const envPattern = new RegExp(`\\\\begin\\{${env}\\}(?:\\[([^\\]]+)\\])?([\\s\\S]*?)\\\\end\\{${env}\\}`, 'g');
+        
+        result = result.replace(envPattern, function(match, label, content) {
+          const labelText = label ? ` <strong>${label}</strong>` : '';
+          // Content will be escaped later by escapeHtml function
+          return `<div class="latex-env-${env}" style="margin: 1em 0; padding: 0.5em; border-left: 3px solid #ED8537; background: #fff5ed;"><strong style="color: #ED8537;">${env.charAt(0).toUpperCase() + env.slice(1)}${labelText}:</strong><br>${content}</div>`;
+        });
+      });
+      
+      return result;
     }
 
     // Convert markdown to HTML (for materials field with tables)
@@ -394,24 +442,24 @@
       if (metaYear) metaYear.innerText = `Year: ${problem.year || '—'}/${problem.month || '—'}`;
       if (metaExam) metaExam.innerText = `Exam: ${problem.exam_type || '—'}`;
       
-      // Format content - escape HTML to preserve < > [ ] characters
-      // Also protect currency amounts ($5,000) from MathJax interpretation
-      const questionText = protectCurrency(escapeHtml(problem.question || ''));
+      // Format content - convert LaTeX environments first, then escape HTML, then protect currency
+      // Order: LaTeX env conversion -> HTML escape -> Currency protection
+      const questionText = protectCurrency(escapeHtml(convertLatexEnvironments(problem.question || '')));
       const answerText = Array.isArray(problem.reference_answer) 
-        ? problem.reference_answer.map(a => protectCurrency(escapeHtml(a))).join('<br><br>') 
-        : protectCurrency(escapeHtml(problem.reference_answer || ''));
+        ? problem.reference_answer.map(a => protectCurrency(escapeHtml(convertLatexEnvironments(a)))).join('<br><br>') 
+        : protectCurrency(escapeHtml(convertLatexEnvironments(problem.reference_answer || '')));
       // Materials field: convert markdown to HTML (for tables) but preserve <Material> tags
-      // Note: protectCurrency should be applied after markdown conversion
+      // Note: LaTeX env conversion should be before markdown conversion to avoid conflicts
       const materialsText = Array.isArray(problem.materials) 
-        ? problem.materials.map(m => protectCurrency(markdownToHtml(m))).join('<br><br>') 
-        : protectCurrency(markdownToHtml(problem.materials || ''));
+        ? problem.materials.map(m => protectCurrency(markdownToHtml(convertLatexEnvironments(m)))).join('<br><br>') 
+        : protectCurrency(markdownToHtml(convertLatexEnvironments(problem.materials || '')));
       const commentText = Array.isArray(problem.comment) 
-        ? problem.comment.map(c => protectCurrency(escapeHtml(c))).join('<br><br>') 
-        : protectCurrency(escapeHtml(problem.comment || ''));
+        ? problem.comment.map(c => protectCurrency(escapeHtml(convertLatexEnvironments(c)))).join('<br><br>') 
+        : protectCurrency(escapeHtml(convertLatexEnvironments(problem.comment || '')));
       // Escape HTML in passages to preserve < > [ ] characters
       const passagesText = Array.isArray(problem.passages) 
-        ? problem.passages.map(p => protectCurrency(escapeHtml(p))).join('<br><br><hr style="margin: 1rem 0; border: none; border-top: 1px solid #ddd;"><br>') 
-        : protectCurrency(escapeHtml(problem.passages || ''));
+        ? problem.passages.map(p => protectCurrency(escapeHtml(convertLatexEnvironments(p)))).join('<br><br><hr style="margin: 1rem 0; border: none; border-top: 1px solid #ddd;"><br>') 
+        : protectCurrency(escapeHtml(convertLatexEnvironments(problem.passages || '')));
       const checklistItems = problem.checklist || [];
       
       updateRender(questionText, answerText, materialsText, commentText, passagesText, checklistItems);
