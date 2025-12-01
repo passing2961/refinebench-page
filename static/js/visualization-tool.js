@@ -125,25 +125,47 @@
       // First, handle itemize and enumerate environments (list environments)
       // These need special handling to convert \item to <li>
       
+      // Helper function to convert \item commands to <li> tags
+      function convertItemsToLi(content) {
+        if (!content) return '';
+        // Find all \item commands (with optional arguments like \item[1])
+        // Pattern matches: \item or \item[...] followed by content until next \item or end
+        const itemPattern = /\\item(?:\s*\[[^\]]*\])?\s*(.*?)(?=\\item|$)/gs;
+        const items = [];
+        let match;
+        
+        // Reset regex lastIndex
+        itemPattern.lastIndex = 0;
+        
+        while ((match = itemPattern.exec(content)) !== null) {
+          const itemContent = match[1];
+          if (itemContent && itemContent.trim()) {
+            items.push(itemContent.trim());
+          }
+        }
+        
+        // If regex didn't match (fallback), try simple split
+        if (items.length === 0) {
+          const parts = content.split(/\\item/);
+          const filtered = parts.filter(part => part.trim());
+          filtered.forEach(part => {
+            const trimmed = part.trim();
+            if (trimmed) items.push(trimmed);
+          });
+        }
+        
+        return items.map(item => `<li>${item}</li>`).join('\n');
+      }
+      
       // Convert itemize to <ul>
       result = result.replace(/\\begin\{itemize\}([\s\S]*?)\\end\{itemize\}/g, function(match, content) {
-        // Convert \item to <li>
-        const items = content.split(/\\item/).filter(item => item.trim());
-        const listItems = items.map(item => {
-          const trimmed = item.trim();
-          return `<li>${trimmed}</li>`;
-        }).join('\n');
+        const listItems = convertItemsToLi(content);
         return `<ul style="margin: 0.5em 0; padding-left: 1.5em;">${listItems}</ul>`;
       });
       
       // Convert enumerate to <ol>
       result = result.replace(/\\begin\{enumerate\}([\s\S]*?)\\end\{enumerate\}/g, function(match, content) {
-        // Convert \item to <li>
-        const items = content.split(/\\item/).filter(item => item.trim());
-        const listItems = items.map(item => {
-          const trimmed = item.trim();
-          return `<li>${trimmed}</li>`;
-        }).join('\n');
+        const listItems = convertItemsToLi(content);
         return `<ol style="margin: 0.5em 0; padding-left: 1.5em;">${listItems}</ol>`;
       });
       
