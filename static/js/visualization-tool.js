@@ -82,11 +82,14 @@
     // Uses HTML entity to prevent MathJax from interpreting $ as math delimiter
     function protectCurrency(text) {
       if (typeof text !== 'string') return text;
-      // Protect $ followed by digits (currency amounts like $5,000, $50,000)
-      // This pattern matches $ followed by digits, commas, and optionally a decimal point
+      // Protect $ followed by digits (currency amounts like $5, $5,000, $50,000, $5.50)
+      // Pattern matches: $ followed by one or more digits, optionally with commas and decimal point
+      // Examples: $5, $5,000, $50,000, $5.50, $5,000.50
       // We use HTML entity &#36; to prevent MathJax from interpreting it as math delimiter
-      // Pattern: $ followed by one or more digits, optionally with commas and decimal point
-      return text.replace(/\$(\d[\d,.]*)/g, '&#36;$1');
+      // Simple and comprehensive pattern: $ followed by digits, commas, and/or decimal point
+      return text.replace(/\$(\d+(?:,\d{3})*(?:\.\d+)?)/g, function(match, amount) {
+        return '&#36;' + amount;
+      });
     }
 
     // Convert markdown to HTML (for materials field with tables)
