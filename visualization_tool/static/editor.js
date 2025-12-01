@@ -120,34 +120,75 @@ function createAnswerSection(answer) {
 
 function processLatex(inputId, outputId) {
     var input = document.getElementById(inputId).value;
+    if (!input || input.trim() === '') {
+        document.getElementById(outputId).innerHTML = '';
+        return;
+    }
     
-    // Handle display math ($$...$$) first
-    var output = input.replace(/\$\$\n?(.*?)\n?\$\$/g, function(match, latex) {
-        // Use \[ \] for display math mode - creates centered, larger equations
-        return `<div style="text-align: center; margin: 1em 0;">\\[${latex}\\]</div>`;
+    var output = input;
+    
+    // Handle display math ($$...$$) first - convert to \[ \]
+    output = output.replace(/\$\$\s*([\s\S]*?)\s*\$\$/g, function(match, latex) {
+        return '\\[' + latex + '\\]';
     });
     
-    // Then handle inline math ($...$)
-    output = output.replace(/\$(.*?)\$/g, function(match, latex) {
-        // Use \( \) for inline math mode
-        return `\\(${latex}\\)`;
+    // Protect display math blocks before processing inline math
+    var protectedBlocks = [];
+    var blockIndex = 0;
+    output = output.replace(/\\\[[\s\S]*?\\\]/g, function(match) {
+        var placeholder = '___PROTECTED_' + blockIndex + '___';
+        protectedBlocks[blockIndex] = match;
+        blockIndex++;
+        return placeholder;
     });
     
-    // Handle line breaks
+    // Handle inline math ($...$)
+    output = output.replace(/\$([^$\n]+?)\$/g, function(match, latex) {
+        return '\\( ' + latex + ' \\)';
+    });
+    
+    // Restore protected blocks
+    for (var i = 0; i < protectedBlocks.length; i++) {
+        output = output.replace('___PROTECTED_' + i + '___', protectedBlocks[i]);
+    }
+    
+    // Escape HTML to prevent browser from interpreting LaTeX as HTML
+    // Use a safer method: create a text node and get its HTML representation
+    var textNode = document.createTextNode(output);
+    var tempDiv = document.createElement('div');
+    tempDiv.appendChild(textNode);
+    var escapedOutput = tempDiv.innerHTML;
+    
+    // But we need LaTeX backslashes, so we need to unescape them
+    // The textContent method escapes everything, but we need LaTeX commands
+    // So let's manually escape only the problematic characters
+    // Actually, let's use a different approach: escape < > & but keep LaTeX intact
+    output = output
+        .replace(/&(?!#?\w+;)/g, '&amp;')  // Escape & but not HTML entities
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    
+    // Convert newlines to <br> for proper line breaks
     output = output.replace(/\n/g, '<br>');
     
-    // Add some spacing between paragraphs
-    output = output.replace(/<br><br>/g, '</p><p style="margin: 1em 0;">');
+    // Wrap in a container div with tex2jax_process class so MathJax processes it
+    // Add overflow handling
+    output = '<div class="latex-content tex2jax_process" style="overflow-x: auto; overflow-y: visible; word-wrap: break-word; max-width: 100%;">' + output + '</div>';
     
+    // Set the HTML content
     document.getElementById(outputId).innerHTML = output;
     
-    // Re-render the LaTeX with custom configuration
+    // Process with MathJax
     MathJax.typesetPromise([document.getElementById(outputId)]).then(() => {
-        // Optional: Adjust the size of all math elements
-        const mathElements = document.getElementById(outputId).getElementsByClassName('MathJax');
+        // Adjust MathJax elements for overflow
+        const mathElements = document.getElementById(outputId).querySelectorAll('.MathJax, .MathJax_Display');
         for (let elem of mathElements) {
-            elem.style.fontSize = '1.1em'; // Slightly larger font size
+            elem.style.fontSize = '1.1em';
+            elem.style.maxWidth = '100%';
+            elem.style.overflowX = 'auto';
         }
+    }).catch(function(err) {
+        console.error('MathJax rendering error:', err);
     });
 }
 
