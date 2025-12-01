@@ -79,16 +79,16 @@
     }
 
     // Protect dollar signs in currency amounts from MathJax interpretation
-    // Uses HTML entity to prevent MathJax from interpreting $ as math delimiter
+    // Wraps currency amounts in a span tag with data-mathjax-ignore so MathJax ignores them
     function protectCurrency(text) {
       if (typeof text !== 'string') return text;
       // Protect $ followed by digits (currency amounts like $5, $5,000, $50,000, $5.50)
       // Pattern matches: $ followed by one or more digits, optionally with commas and decimal point
       // Examples: $5, $5,000, $50,000, $5.50, $5,000.50
-      // We use HTML entity &#36; to prevent MathJax from interpreting it as math delimiter
+      // We wrap it in a span with data-mathjax-ignore attribute so MathJax will skip it
       // Simple and comprehensive pattern: $ followed by digits, commas, and/or decimal point
       return text.replace(/\$(\d+(?:,\d{3})*(?:\.\d+)?)/g, function(match, amount) {
-        return '&#36;' + amount;
+        return '<span class="currency" data-mathjax-ignore="true">$' + amount + '</span>';
       });
     }
 
@@ -144,6 +144,29 @@
       return html;
     }
 
+    // Helper function to protect currency in element before MathJax processing
+    function protectCurrencyInElement(element) {
+      if (!element) return;
+      const currencySpans = element.querySelectorAll('.currency');
+      currencySpans.forEach(span => {
+        // Replace $ with a placeholder that MathJax won't interpret
+        const originalText = span.textContent;
+        span.setAttribute('data-original', originalText);
+        span.textContent = originalText.replace(/\$/g, 'DOLLAR_SIGN_PLACEHOLDER');
+      });
+    }
+
+    // Helper function to restore currency in element after MathJax processing
+    function restoreCurrencyInElement(element) {
+      if (!element) return;
+      const currencySpans = element.querySelectorAll('.currency[data-original]');
+      currencySpans.forEach(span => {
+        const original = span.getAttribute('data-original');
+        span.textContent = original;
+        span.removeAttribute('data-original');
+      });
+    }
+
     // Render with MathJax
     function updateRender(questionText, answerText, materialsText, commentText, passagesText, checklistItems) {
       console.log('Updating render...');
@@ -175,11 +198,20 @@
       if (renderComment) elementsToRender.push(renderComment);
       if (renderPassages) elementsToRender.push(renderPassages);
       
+      // Protect currency amounts before MathJax processing
+      elementsToRender.forEach(el => protectCurrencyInElement(el));
+      
       // Try to render MathJax if available (but don't block if it's not loaded yet)
       if(window.MathJax && MathJax.typesetPromise){
         console.log('Typesetting with MathJax...');
-        MathJax.typesetPromise(elementsToRender).catch(err => {
+        MathJax.typesetPromise(elementsToRender).then(() => {
+          console.log('MathJax rendering completed');
+          // Restore currency amounts after MathJax processing
+          elementsToRender.forEach(el => restoreCurrencyInElement(el));
+        }).catch(err => {
           console.error('MathJax error:', err);
+          // Restore currency amounts even on error
+          elementsToRender.forEach(el => restoreCurrencyInElement(el));
         });
       } else {
         // MathJax might not be loaded yet, but that's okay - content will still display
@@ -187,9 +219,18 @@
         // Retry after a short delay
         setTimeout(() => {
           if(window.MathJax && MathJax.typesetPromise){
-            MathJax.typesetPromise(elementsToRender).catch(err => {
+            MathJax.typesetPromise(elementsToRender).then(() => {
+              console.log('MathJax rendering completed on retry');
+              // Restore currency amounts after MathJax processing
+              elementsToRender.forEach(el => restoreCurrencyInElement(el));
+            }).catch(err => {
               console.error('MathJax error on retry:', err);
+              // Restore currency amounts even on error
+              elementsToRender.forEach(el => restoreCurrencyInElement(el));
             });
+          } else {
+            // If MathJax never loads, restore currency amounts
+            elementsToRender.forEach(el => restoreCurrencyInElement(el));
           }
         }, 1000);
       }
