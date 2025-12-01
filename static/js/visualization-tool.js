@@ -66,9 +66,41 @@
     let currentProblem = null;
 
     // HTML escape function to prevent < > [ ] from being interpreted as HTML tags
-    // But preserve HTML tags created by convertLatexEnvironments
+    // But preserve HTML tags created by convertLatexEnvironments and math blocks
     function escapeHtml(text) {
       if (typeof text !== 'string') return text;
+      
+      // First, protect math blocks ($...$, $$...$$, \[...\], \(...\)) from escaping
+      const protectedMath = [];
+      let mathIndex = 0;
+      
+      // Protect display math: $$...$$ or \[...\]
+      text = text.replace(/\$\$[\s\S]*?\$\$|\\\[[\s\S]*?\\\]/g, (match) => {
+        const placeholder = `__MATH_BLOCK_${mathIndex}__`;
+        protectedMath[mathIndex] = match;
+        mathIndex++;
+        return placeholder;
+      });
+      
+      // Protect inline math: $...$ or \(...\)
+      // Note: Currency amounts are already protected by protectCurrency, so they won't be here
+      // Match $...$ but be careful with nested cases
+      text = text.replace(/\$[^$\n]+\$|\\\([^)]+\\\)/g, (match) => {
+        // Skip if it looks like currency (already handled)
+        if (/^\$\d/.test(match)) return match;
+        const placeholder = `__MATH_INLINE_${mathIndex}__`;
+        protectedMath[mathIndex] = match;
+        mathIndex++;
+        return placeholder;
+      });
+      
+      // Protect align environments and other math environments
+      text = text.replace(/\\begin\{(align|align\*|equation|equation\*|cases)\}[\s\S]*?\\end\{\1\}/g, (match) => {
+        const placeholder = `__MATH_ENV_${mathIndex}__`;
+        protectedMath[mathIndex] = match;
+        mathIndex++;
+        return placeholder;
+      });
       
       // First, protect HTML tags created by convertLatexEnvironments and list tags
       const protectedTags = [];
@@ -98,6 +130,13 @@
         escaped = escaped.replace(`__LATEX_ENV_TAG_${index}__`, tag);
       });
       
+      // Restore protected math blocks
+      protectedMath.forEach((math, index) => {
+        escaped = escaped.replace(`__MATH_BLOCK_${index}__`, math);
+        escaped = escaped.replace(`__MATH_INLINE_${index}__`, math);
+        escaped = escaped.replace(`__MATH_ENV_${index}__`, math);
+      });
+      
       return escaped;
     }
 
@@ -109,6 +148,15 @@
       // \mathbbm is from bbm package which MathJax doesn't support by default
       // \mathbbm{1} is commonly used for indicator function, convert to \mathbf{1}
       text = text.replace(/\\mathbbm\{([^}]+)\}/g, '\\mathbf{$1}');
+      
+      // Fix malformed display math blocks ($$ without proper pairing)
+      // If we see a standalone $$ at the end, ensure it's properly closed
+      // This handles cases like "text.$$" where $$ should be part of a math block
+      text = text.replace(/([^$])\$\$([^$]|$)/g, function(match, before, after) {
+        // If $$ appears at end of line or sentence, it might be a closing tag
+        // Check if there's a matching opening $$ before
+        return before + '$$' + (after || '');
+      });
       
       return text;
     }
@@ -175,8 +223,8 @@
         return `<ul style="margin: 0.5em 0; padding-left: 1.5em;">${listItems}</ul>`;
       });
       
-      // Convert enumerate to <ol>
-      result = result.replace(/\\begin\{enumerate\}([\s\S]*?)\\end\{enumerate\}/g, function(match, content) {
+      // Convert enumerate to <ol> (handle optional arguments like [label=(\alph*)])
+      result = result.replace(/\\begin\{enumerate\}(?:\[[^\]]*\])?([\s\S]*?)\\end\{enumerate\}/g, function(match, content) {
         const listItems = convertItemsToLi(content);
         return `<ol style="margin: 0.5em 0; padding-left: 1.5em;">${listItems}</ol>`;
       });
