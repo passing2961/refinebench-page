@@ -70,10 +70,11 @@
     function escapeHtml(text) {
       if (typeof text !== 'string') return text;
       
-      // First, protect HTML tags created by convertLatexEnvironments
+      // First, protect HTML tags created by convertLatexEnvironments and list tags
       const protectedTags = [];
       let tagIndex = 0;
-      const tagPattern = /<div class="latex-env-[^"]+"[^>]*>[\s\S]*?<\/div>/g;
+      // Match div tags from LaTeX environments, and ul/ol/li tags from itemize/enumerate
+      const tagPattern = /<(div class="latex-env-[^"]+"[^>]*>[\s\S]*?<\/div>|<(ul|ol|li)[^>]*>[\s\S]*?<\/\2>)/g;
       
       const textWithProtectedTags = text.replace(tagPattern, (match) => {
         const placeholder = `__LATEX_ENV_TAG_${tagIndex}__`;
@@ -119,10 +120,35 @@
     function convertLatexEnvironments(text) {
       if (typeof text !== 'string') return text;
       
-      // List of LaTeX environments that MathJax doesn't recognize
-      const environments = ['definition', 'problem', 'theorem', 'lemma', 'proposition', 'corollary', 'example', 'remark'];
-      
       let result = text;
+      
+      // First, handle itemize and enumerate environments (list environments)
+      // These need special handling to convert \item to <li>
+      
+      // Convert itemize to <ul>
+      result = result.replace(/\\begin\{itemize\}([\s\S]*?)\\end\{itemize\}/g, function(match, content) {
+        // Convert \item to <li>
+        const items = content.split(/\\item/).filter(item => item.trim());
+        const listItems = items.map(item => {
+          const trimmed = item.trim();
+          return `<li>${trimmed}</li>`;
+        }).join('\n');
+        return `<ul style="margin: 0.5em 0; padding-left: 1.5em;">${listItems}</ul>`;
+      });
+      
+      // Convert enumerate to <ol>
+      result = result.replace(/\\begin\{enumerate\}([\s\S]*?)\\end\{enumerate\}/g, function(match, content) {
+        // Convert \item to <li>
+        const items = content.split(/\\item/).filter(item => item.trim());
+        const listItems = items.map(item => {
+          const trimmed = item.trim();
+          return `<li>${trimmed}</li>`;
+        }).join('\n');
+        return `<ol style="margin: 0.5em 0; padding-left: 1.5em;">${listItems}</ol>`;
+      });
+      
+      // List of other LaTeX environments that MathJax doesn't recognize
+      const environments = ['definition', 'problem', 'theorem', 'lemma', 'proposition', 'corollary', 'example', 'remark', 'proof'];
       
       // Convert each environment to HTML
       environments.forEach(env => {
