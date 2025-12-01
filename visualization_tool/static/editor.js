@@ -127,6 +127,20 @@ function processLatex(inputId, outputId) {
     
     var output = input;
     
+    // First, handle code blocks (```language ... ``` or ``` ... ```)
+    // Protect code blocks first so they don't get processed as LaTeX
+    var codeBlocks = [];
+    var codeIndex = 0;
+    output = output.replace(/```(\w+)?\s*([\s\S]*?)```/g, function(match, lang, code) {
+        var placeholder = '___CODE_BLOCK_' + codeIndex + '___';
+        codeBlocks[codeIndex] = {
+            language: lang || 'text',
+            code: code.trim()
+        };
+        codeIndex++;
+        return placeholder;
+    });
+    
     // Handle display math ($$...$$) first - convert to \[ \]
     output = output.replace(/\$\$\s*([\s\S]*?)\s*\$\$/g, function(match, latex) {
         return '\\[' + latex + '\\]';
@@ -153,23 +167,41 @@ function processLatex(inputId, outputId) {
     }
     
     // Escape HTML to prevent browser from interpreting LaTeX as HTML
-    // Use a safer method: create a text node and get its HTML representation
-    var textNode = document.createTextNode(output);
-    var tempDiv = document.createElement('div');
-    tempDiv.appendChild(textNode);
-    var escapedOutput = tempDiv.innerHTML;
-    
-    // But we need LaTeX backslashes, so we need to unescape them
-    // The textContent method escapes everything, but we need LaTeX commands
-    // So let's manually escape only the problematic characters
-    // Actually, let's use a different approach: escape < > & but keep LaTeX intact
+    // But keep LaTeX commands intact
     output = output
         .replace(/&(?!#?\w+;)/g, '&amp;')  // Escape & but not HTML entities
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
     
-    // Convert newlines to <br> for proper line breaks
+    // Restore code blocks as HTML <pre><code> elements
+    for (var j = 0; j < codeBlocks.length; j++) {
+        var codeBlock = codeBlocks[j];
+        var escapedCode = codeBlock.code
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+        var codeHtml = '<pre><code class="language-' + codeBlock.language + '">' + escapedCode + '</code></pre>';
+        output = output.replace('___CODE_BLOCK_' + j + '___', codeHtml);
+    }
+    
+    // Convert newlines to <br> for proper line breaks (but not inside code blocks)
+    // Split by code blocks first
+    var finalCodeBlocks = [];
+    var finalCodeIndex = 0;
+    output = output.replace(/<pre><code[\s\S]*?<\/code><\/pre>/g, function(match) {
+        var placeholder = '___FINAL_CODE_' + finalCodeIndex + '___';
+        finalCodeBlocks[finalCodeIndex] = match;
+        finalCodeIndex++;
+        return placeholder;
+    });
+    
+    // Convert newlines to <br> in non-code parts
     output = output.replace(/\n/g, '<br>');
+    
+    // Restore code blocks
+    for (var k = 0; k < finalCodeBlocks.length; k++) {
+        output = output.replace('___FINAL_CODE_' + k + '___', finalCodeBlocks[k]);
+    }
     
     // Wrap in a container div with tex2jax_process class so MathJax processes it
     // Add overflow handling
@@ -177,6 +209,13 @@ function processLatex(inputId, outputId) {
     
     // Set the HTML content
     document.getElementById(outputId).innerHTML = output;
+    
+    // Highlight code blocks
+    if (typeof hljs !== 'undefined') {
+        document.getElementById(outputId).querySelectorAll('pre code').forEach(function(block) {
+            hljs.highlightElement(block);
+        });
+    }
     
     // Process with MathJax
     MathJax.typesetPromise([document.getElementById(outputId)]).then(() => {

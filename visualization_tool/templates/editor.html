@@ -6,6 +6,14 @@
     <title>LaTeX Live Preview</title>
 
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500&display=swap" rel="stylesheet">
+    <!-- Highlight.js for code syntax highlighting -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/default.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/python.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/java.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/cpp.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/c.min.js"></script>
     <script>
         window.MathJax = {
             tex: {
@@ -181,6 +189,45 @@
         .latex-content .MathJax_Display {
             max-width: 100% !important;
             overflow-x: auto;
+        }
+        
+        /* Code block styling */
+        .latex-content pre {
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 12px;
+            overflow-x: auto;
+            margin: 1em 0;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+        
+        .latex-content pre code {
+            background-color: transparent;
+            padding: 0;
+            border: none;
+            font-family: inherit;
+        }
+        
+        .latex-content code {
+            background-color: #f5f5f5;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 0.9em;
+        }
+        
+        body.dark-theme .latex-content pre {
+            background-color: #2d2d30;
+            border-color: #555555;
+            color: #e0e0e0;
+        }
+        
+        body.dark-theme .latex-content code {
+            background-color: #2d2d30;
+            color: #e0e0e0;
         }
 
         .buttons {
