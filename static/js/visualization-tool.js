@@ -101,6 +101,18 @@
       return escaped;
     }
 
+    // Convert unsupported LaTeX commands to MathJax-compatible ones
+    function convertLatexCommands(text) {
+      if (typeof text !== 'string') return text;
+      
+      // Convert \mathbbm{...} to \mathbf{...} (indicator function)
+      // \mathbbm is from bbm package which MathJax doesn't support by default
+      // \mathbbm{1} is commonly used for indicator function, convert to \mathbf{1}
+      text = text.replace(/\\mathbbm\{([^}]+)\}/g, '\\mathbf{$1}');
+      
+      return text;
+    }
+
     // Protect dollar signs in currency amounts from MathJax interpretation
     // Wraps currency amounts in a span tag with data-mathjax-ignore so MathJax ignores them
     function protectCurrency(text) {
@@ -490,24 +502,24 @@
       if (metaYear) metaYear.innerText = `Year: ${problem.year || '—'}/${problem.month || '—'}`;
       if (metaExam) metaExam.innerText = `Exam: ${problem.exam_type || '—'}`;
       
-      // Format content - convert LaTeX environments first, then escape HTML, then protect currency
-      // Order: LaTeX env conversion -> HTML escape -> Currency protection
-      const questionText = protectCurrency(escapeHtml(convertLatexEnvironments(problem.question || '')));
+      // Format content - convert LaTeX commands first, then environments, then escape HTML, then protect currency
+      // Order: LaTeX commands -> LaTeX env conversion -> HTML escape -> Currency protection
+      const questionText = protectCurrency(escapeHtml(convertLatexEnvironments(convertLatexCommands(problem.question || ''))));
       const answerText = Array.isArray(problem.reference_answer) 
-        ? problem.reference_answer.map(a => protectCurrency(escapeHtml(convertLatexEnvironments(a)))).join('<br><br>') 
-        : protectCurrency(escapeHtml(convertLatexEnvironments(problem.reference_answer || '')));
+        ? problem.reference_answer.map(a => protectCurrency(escapeHtml(convertLatexEnvironments(convertLatexCommands(a))))).join('<br><br>') 
+        : protectCurrency(escapeHtml(convertLatexEnvironments(convertLatexCommands(problem.reference_answer || ''))));
       // Materials field: convert markdown to HTML (for tables) but preserve <Material> tags
-      // Note: LaTeX env conversion should be before markdown conversion to avoid conflicts
+      // Note: LaTeX commands and env conversion should be before markdown conversion to avoid conflicts
       const materialsText = Array.isArray(problem.materials) 
-        ? problem.materials.map(m => protectCurrency(markdownToHtml(convertLatexEnvironments(m)))).join('<br><br>') 
-        : protectCurrency(markdownToHtml(convertLatexEnvironments(problem.materials || '')));
+        ? problem.materials.map(m => protectCurrency(markdownToHtml(convertLatexEnvironments(convertLatexCommands(m))))).join('<br><br>') 
+        : protectCurrency(markdownToHtml(convertLatexEnvironments(convertLatexCommands(problem.materials || ''))));
       const commentText = Array.isArray(problem.comment) 
-        ? problem.comment.map(c => protectCurrency(escapeHtml(convertLatexEnvironments(c)))).join('<br><br>') 
-        : protectCurrency(escapeHtml(convertLatexEnvironments(problem.comment || '')));
+        ? problem.comment.map(c => protectCurrency(escapeHtml(convertLatexEnvironments(convertLatexCommands(c))))).join('<br><br>') 
+        : protectCurrency(escapeHtml(convertLatexEnvironments(convertLatexCommands(problem.comment || ''))));
       // Escape HTML in passages to preserve < > [ ] characters
       const passagesText = Array.isArray(problem.passages) 
-        ? problem.passages.map(p => protectCurrency(escapeHtml(convertLatexEnvironments(p)))).join('<br><br><hr style="margin: 1rem 0; border: none; border-top: 1px solid #ddd;"><br>') 
-        : protectCurrency(escapeHtml(convertLatexEnvironments(problem.passages || '')));
+        ? problem.passages.map(p => protectCurrency(escapeHtml(convertLatexEnvironments(convertLatexCommands(p))))).join('<br><br><hr style="margin: 1rem 0; border: none; border-top: 1px solid #ddd;"><br>') 
+        : protectCurrency(escapeHtml(convertLatexEnvironments(convertLatexCommands(problem.passages || ''))));
       const checklistItems = problem.checklist || [];
       
       updateRender(questionText, answerText, materialsText, commentText, passagesText, checklistItems);
